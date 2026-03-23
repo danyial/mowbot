@@ -12,5 +12,8 @@
     <Internal>
       <SocketReceiveBufferSize min="10MB"/>
     </Internal>
+    <SharedMemory>
+      <Enable>false</Enable>
+    </SharedMemory>
   </Domain>
 </CycloneDDS>

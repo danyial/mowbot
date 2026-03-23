@@ -29,4 +29,4 @@ done
 
 exec str2str \
   -in "ntrip://${NTRIP_USER}:${NTRIP_PASS}@${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_MOUNT}" \
-  -out "serial://${GNSS_DEVICE}:${GNSS_BAUD:-115200}"
+  -out "file://${GNSS_DEVICE}"

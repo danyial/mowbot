@@ -1,0 +1,47 @@
+# docker-compose.build.yml
+# Lokale Build-Definitionen als Override fuer docker-compose.yml
+#
+# Verwendung:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+
+services:
+
+  micro-ros-agent:
+    build:
+      context: ./docker/micro-ros-agent
+      args:
+        ROS_DISTRO: humble
+
+  gnss:
+    build:
+      context: ./docker/gnss
+      args:
+        ROS_DISTRO: humble
+
+  ntrip:
+    build:
+      context: ./docker/ntrip
+
+  imu:
+    build:
+      context: ./docker/imu
+      args:
+        ROS_DISTRO: humble
+
+  nav:
+    build:
+      context: ./docker/nav
+      args:
+        ROS_DISTRO: humble
+
+  rosbridge:
+    build:
+      context: ./docker/rosbridge
+      args:
+        ROS_DISTRO: humble
+
+  web:
+    build:
+      context: ./web
+      dockerfile: ../docker/web/Dockerfile

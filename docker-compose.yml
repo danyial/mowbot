@@ -15,10 +15,7 @@ services:
   # ============================================
   micro-ros-agent:
     <<: *ros-common
-    build:
-      context: ./docker/micro-ros-agent
-      args:
-        ROS_DISTRO: humble
+    image: ghcr.io/danyial/mowbot/micro-ros-agent:latest
     container_name: mower-micro-ros
     devices:
       - ${ESP32_DEVICE:-/dev/ttyESP32}:/dev/ttyESP32
@@ -31,10 +28,7 @@ services:
   # ============================================
   gnss:
     <<: *ros-common
-    build:
-      context: ./docker/gnss
-      args:
-        ROS_DISTRO: humble
+    image: ghcr.io/danyial/mowbot/gnss:latest
     container_name: mower-gnss
     devices:
       - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
@@ -50,8 +44,7 @@ services:
   # ============================================
   ntrip:
     <<: *ros-common
-    build:
-      context: ./docker/ntrip
+    image: ghcr.io/danyial/mowbot/ntrip:latest
     container_name: mower-ntrip
     devices:
       - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
@@ -67,10 +60,7 @@ services:
   # ============================================
   imu:
     <<: *ros-common
-    build:
-      context: ./docker/imu
-      args:
-        ROS_DISTRO: humble
+    image: ghcr.io/danyial/mowbot/imu:latest
     container_name: mower-imu
     devices:
       - /dev/i2c-1:/dev/i2c-1
@@ -86,10 +76,7 @@ services:
   # ============================================
   nav:
     <<: *ros-common
-    build:
-      context: ./docker/nav
-      args:
-        ROS_DISTRO: humble
+    image: ghcr.io/danyial/mowbot/nav:latest
     container_name: mower-nav
     depends_on:
       - gnss
@@ -105,21 +92,16 @@ services:
   # ============================================
   rosbridge:
     <<: *ros-common
-    build:
-      context: ./docker/rosbridge
-      args:
-        ROS_DISTRO: humble
+    image: ghcr.io/danyial/mowbot/rosbridge:latest
     container_name: mower-rosbridge
     command: >
       ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 
   # ============================================
-  # MowerControl — Web-App
+  # MowControl — Web-App
   # ============================================
   web:
-    build:
-      context: ./web
-      dockerfile: ../docker/web/Dockerfile
+    image: ghcr.io/danyial/mowbot/web:latest
     container_name: mower-web
     restart: unless-stopped
     network_mode: host

@@ -1,0 +1,140 @@
+x-ros-common: &ros-common
+  restart: unless-stopped
+  network_mode: host
+  environment:
+    - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    - CYCLONEDDS_URI=file:///config/cyclonedds.xml
+  volumes:
+    - ./config:/config:ro
+
+services:
+
+  # ============================================
+  # micro-ROS Agent — ESP32 Motorcontroller
+  # ============================================
+  micro-ros-agent:
+    <<: *ros-common
+    build:
+      context: ./docker/micro-ros-agent
+      args:
+        ROS_DISTRO: humble
+    container_name: mower-micro-ros
+    devices:
+      - ${ESP32_DEVICE:-/dev/ttyESP32}:/dev/ttyESP32
+    command: >
+      ros2 run micro_ros_agent micro_ros_agent
+      serial --dev /dev/ttyESP32 -b 115200
+
+  # ============================================
+  # GNSS — NMEA NavSat Driver (UM980)
+  # ============================================
+  gnss:
+    <<: *ros-common
+    build:
+      context: ./docker/gnss
+      args:
+        ROS_DISTRO: humble
+    container_name: mower-gnss
+    devices:
+      - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
+    command: >
+      ros2 run nmea_navsat_driver nmea_serial_driver
+      --ros-args
+      -p port:=/dev/ttyGNSS
+      -p baud:=${GNSS_BAUD:-115200}
+      -p frame_id:=gps_link
+
+  # ============================================
+  # NTRIP — RTK-Korrekturdaten
+  # ============================================
+  ntrip:
+    <<: *ros-common
+    build:
+      context: ./docker/ntrip
+    container_name: mower-ntrip
+    devices:
+      - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
+    env_file:
+      - ./config/ntrip.env
+    depends_on:
+      gnss:
+        condition: service_started
+    entrypoint: ["/entrypoint.sh"]
+
+  # ============================================
+  # IMU — MPU6050 Treiber
+  # ============================================
+  imu:
+    <<: *ros-common
+    build:
+      context: ./docker/imu
+      args:
+        ROS_DISTRO: humble
+    container_name: mower-imu
+    devices:
+      - /dev/i2c-1:/dev/i2c-1
+    command: >
+      ros2 run mpu6050driver mpu6050driver
+      --ros-args
+      -p i2c_bus:=1
+      -p device_address:=${IMU_ADDRESS:-0x68}
+      -p frequency:=${IMU_FREQUENCY:-30}
+
+  # ============================================
+  # Navigation — Nav2 + EKF Sensor-Fusion
+  # ============================================
+  nav:
+    <<: *ros-common
+    build:
+      context: ./docker/nav
+      args:
+        ROS_DISTRO: humble
+    container_name: mower-nav
+    depends_on:
+      - gnss
+      - imu
+      - micro-ros-agent
+    volumes:
+      - mower-data:/data
+    command: >
+      ros2 launch /config/mower_nav_launch.py
+
+  # ============================================
+  # rosbridge — WebSocket Server
+  # ============================================
+  rosbridge:
+    <<: *ros-common
+    build:
+      context: ./docker/rosbridge
+      args:
+        ROS_DISTRO: humble
+    container_name: mower-rosbridge
+    command: >
+      ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+
+  # ============================================
+  # MowerControl — Web-App
+  # ============================================
+  web:
+    build:
+      context: ./web
+      dockerfile: ../docker/web/Dockerfile
+    container_name: mower-web
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_PUBLIC_ROSBRIDGE_URL=/rosbridge
+      - ROSBRIDGE_URL=ws://localhost:9090
+      - NTRIP_ENV_PATH=/app/config/ntrip.env
+    volumes:
+      - ./config:/app/config
+      - mower-data:/app/data
+    depends_on:
+      - rosbridge
+
+volumes:
+  mower-data:
+    driver: local

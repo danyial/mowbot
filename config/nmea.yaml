@@ -1,0 +1,9 @@
+# NMEA NavSat Driver Konfiguration
+nmea_navsat_driver:
+  ros__parameters:
+    port: /dev/ttyGNSS
+    baud: 115200
+    frame_id: "gps_link"
+    use_GNSS_time: false
+    time_ref_source: "gps"
+    useRMC: false

@@ -1,0 +1,26 @@
+# Roboter-Parameter
+# Diese Werte muessen an das jeweilige Chassis angepasst werden
+robot:
+  ros__parameters:
+    # Kinematik
+    wheel_separation: 0.20          # Kettenabstand in Metern
+    wheel_radius: 0.065             # Radradius in Metern (130mm Raeder)
+
+    # Geschwindigkeitslimits
+    max_linear_speed: 0.5           # m/s
+    max_angular_speed: 1.5          # rad/s
+
+    # ESC PWM
+    esc_left_pin: 25
+    esc_right_pin: 26
+    esc_neutral_us: 1500            # Neutral-Pulsweite in us
+    esc_range_us: 500               # Bereich: 1000-2000us
+
+    # Sicherheit
+    cmd_vel_timeout_ms: 500         # Motoren stoppen nach X ms ohne cmd_vel
+    tilt_threshold_deg: 15.0        # Kipp-Alarm Schwellenwert
+
+    # Maehwerk (PoC: deaktiviert)
+    mower_enabled: false
+    mower_width: 0.20               # Messerbreite in Metern
+    mower_overlap: 0.10             # Ueberlappung (0-1)

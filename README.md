@@ -61,6 +61,25 @@ chmod +x setup.sh
 1. Edit `.env` — verify device paths (`/dev/ttyESP32`, `/dev/ttyGNSS`)
 2. Edit `config/ntrip.env` — set your RTK base station credentials
 
+### udev Rules
+
+The setup script installs udev rules automatically. If you skipped `setup.sh` or need to install them manually:
+
+```bash
+sudo cp udev/99-mower.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+This creates persistent symlinks for the USB devices:
+
+| Device | Symlink | Hardware |
+|--------|---------|----------|
+| CP2102 (ESP32) | `/dev/ttyESP32` | Motor controller |
+| CH341 (UM980) | `/dev/ttyGNSS` | GNSS receiver |
+
+Without these rules, the device paths may change on every reboot (e.g. `/dev/ttyUSB0` vs `/dev/ttyUSB1`), which would break the Docker container device mappings.
+
 ### Start
 
 ```bash

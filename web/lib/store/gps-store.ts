@@ -4,6 +4,27 @@ import { create } from "zustand";
 import type { NavSatFix, FixStatus } from "@/lib/types/ros-messages";
 import { getFixStatus } from "@/lib/types/ros-messages";
 
+// Minimum distance in meters between boundary recording points
+const BOUNDARY_MIN_DISTANCE_M = 0.5;
+
+/** Quick Haversine distance in meters between two lat/lon points */
+function quickDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 interface GpsState {
   latitude: number | null;
   longitude: number | null;
@@ -61,9 +82,21 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       ? [...state.track, [msg.latitude, msg.longitude] as [number, number]]
       : state.track;
 
-    const newBoundaryPoints = state.isRecordingBoundary
-      ? [...state.boundaryPoints, [msg.latitude, msg.longitude] as [number, number]]
-      : state.boundaryPoints;
+    // Only record boundary point if minimum distance from last point is met
+    let newBoundaryPoints = state.boundaryPoints;
+    if (state.isRecordingBoundary) {
+      const lastPt = state.boundaryPoints[state.boundaryPoints.length - 1];
+      const shouldAdd =
+        !lastPt ||
+        quickDistance(lastPt[0], lastPt[1], msg.latitude, msg.longitude) >=
+          BOUNDARY_MIN_DISTANCE_M;
+      if (shouldAdd) {
+        newBoundaryPoints = [
+          ...state.boundaryPoints,
+          [msg.latitude, msg.longitude] as [number, number],
+        ];
+      }
+    }
 
     // Estimate HDOP from covariance (simplified)
     const hdop =

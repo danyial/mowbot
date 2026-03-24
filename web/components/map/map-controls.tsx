@@ -1,6 +1,6 @@
 "use client";
 
-import { MutableRefObject } from "react";
+import { MutableRefObject, useCallback, useEffect, useState } from "react";
 import {
   Crosshair,
   Navigation,
@@ -11,21 +11,33 @@ import {
   Route,
   Map,
   Globe,
+  Plus,
+  Undo2,
+  Check,
+  X,
+  Fence,
+  TreePine,
+  Scissors,
+  ArrowRightLeft,
+  BatteryCharging,
 } from "lucide-react";
 import type { MapLayerType } from "./robot-map";
 import { Button } from "@/components/ui/button";
 import { useGpsStore } from "@/lib/store/gps-store";
+import { useZoneStore } from "@/lib/store/zone-store";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
+import type { ZoneType } from "@/lib/types/zones";
+import { ZONE_TYPE_CONFIG } from "@/lib/types/zones";
 
 interface MapControlsProps {
   following: boolean;
   onToggleFollow: () => void;
   showTrack: boolean;
   onToggleTrack: () => void;
-  showGarden: boolean;
-  onToggleGarden: () => void;
+  showZones: boolean;
+  onToggleZones: () => void;
   showPaths: boolean;
   onTogglePaths: () => void;
   mapLayer: MapLayerType;
@@ -33,13 +45,21 @@ interface MapControlsProps {
   mapRef: MutableRefObject<L.Map | null>;
 }
 
+const ZONE_TYPE_ICONS: Record<ZoneType, typeof Fence> = {
+  garden: Fence,
+  mow: Scissors,
+  exclusion: TreePine,
+  corridor: ArrowRightLeft,
+  dock: BatteryCharging,
+};
+
 export function MapControls({
   following,
   onToggleFollow,
   showTrack,
   onToggleTrack,
-  showGarden,
-  onToggleGarden,
+  showZones,
+  onToggleZones,
   showPaths,
   onTogglePaths,
   mapLayer,
@@ -52,8 +72,45 @@ export function MapControls({
   const isRecordingBoundary = useGpsStore((s) => s.isRecordingBoundary);
   const startBoundaryRecording = useGpsStore((s) => s.startBoundaryRecording);
   const stopBoundaryRecording = useGpsStore((s) => s.stopBoundaryRecording);
-  const cancelBoundaryRecording = useGpsStore((s) => s.cancelBoundaryRecording);
+  const cancelBoundaryRecording = useGpsStore(
+    (s) => s.cancelBoundaryRecording
+  );
   const clearTrack = useGpsStore((s) => s.clearTrack);
+
+  const editMode = useZoneStore((s) => s.editMode);
+  const drawingPoints = useZoneStore((s) => s.drawingPoints);
+  const newZoneType = useZoneStore((s) => s.newZoneType);
+  const startDrawing = useZoneStore((s) => s.startDrawing);
+  const undoDrawingPoint = useZoneStore((s) => s.undoDrawingPoint);
+  const finishDrawing = useZoneStore((s) => s.finishDrawing);
+  const cancelDrawing = useZoneStore((s) => s.cancelDrawing);
+  const activeZoneId = useZoneStore((s) => s.activeZoneId);
+  const deleteZone = useZoneStore((s) => s.deleteZone);
+  const zones = useZoneStore((s) => s.zones);
+
+  const [showZoneMenu, setShowZoneMenu] = useState(false);
+  const [zoneName, setZoneName] = useState("");
+  const [showNameInput, setShowNameInput] = useState(false);
+
+  // Handle drawing close event from ZoneDrawHandler
+  const handleDrawingClose = useCallback(() => {
+    if (editMode === "draw" && drawingPoints.length >= 3) {
+      setShowNameInput(true);
+    }
+  }, [editMode, drawingPoints.length]);
+
+  useEffect(() => {
+    window.addEventListener(
+      "zone-drawing-close-requested",
+      handleDrawingClose
+    );
+    return () => {
+      window.removeEventListener(
+        "zone-drawing-close-requested",
+        handleDrawingClose
+      );
+    };
+  }, [handleDrawingClose]);
 
   const handleCenterOnRobot = () => {
     if (latitude !== null && longitude !== null && mapRef.current) {
@@ -63,25 +120,52 @@ export function MapControls({
     }
   };
 
-  const handleBoundaryToggle = async () => {
+  const handleStartDrawing = (type: ZoneType) => {
+    startDrawing(type);
+    setShowZoneMenu(false);
+    toast({
+      title: `${ZONE_TYPE_CONFIG[type].label} zeichnen`,
+      description: "Tippe auf die Karte um Punkte zu setzen.",
+    });
+  };
+
+  const handleFinishDrawing = async () => {
+    const name = zoneName.trim() || ZONE_TYPE_CONFIG[newZoneType].label;
+    const zone = await finishDrawing(name);
+    setShowNameInput(false);
+    setZoneName("");
+    if (zone) {
+      toast({
+        title: "Zone gespeichert",
+        description: `"${zone.properties.name}" mit ${drawingPoints.length} Punkten erstellt.`,
+        variant: "success",
+      });
+    } else {
+      toast({
+        title: "Fehler",
+        description: "Zone konnte nicht gespeichert werden.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGpsRecordToggle = async () => {
     if (isRecordingBoundary) {
       const points = stopBoundaryRecording();
       if (points.length >= 3) {
-        try {
-          await fetch("/api/garden", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: "Hauptgarten",
-              points,
-            }),
-          });
+        // Use the zone store to save via the new API
+        const zone = await useZoneStore.getState().addZone({
+          name: "GPS-Aufnahme",
+          zoneType: "garden",
+          points,
+        });
+        if (zone) {
           toast({
-            title: "Gartengrenze gespeichert",
-            description: `${points.length} Punkte aufgezeichnet.`,
+            title: "Zone gespeichert",
+            description: `${points.length} GPS-Punkte aufgezeichnet.`,
             variant: "success",
           });
-        } catch {
+        } else {
           toast({
             title: "Fehler beim Speichern",
             variant: "destructive",
@@ -97,19 +181,39 @@ export function MapControls({
     } else {
       startBoundaryRecording();
       toast({
-        title: "Aufzeichnung gestartet",
-        description: "Fahre den Gartenrand ab. Tippe erneut zum Beenden.",
+        title: "GPS-Aufnahme gestartet",
+        description: "Fahre den Rand ab. Tippe erneut zum Beenden.",
       });
     }
   };
 
-  const fixBadgeVariant: Record<string, "success" | "warning" | "error" | "info" | "secondary"> = {
+  const handleDeleteActiveZone = async () => {
+    if (!activeZoneId) return;
+    const zone = zones.find((z) => z.id === activeZoneId);
+    const success = await deleteZone(activeZoneId);
+    if (success) {
+      toast({
+        title: "Zone geloescht",
+        description: zone ? `"${zone.properties.name}" entfernt.` : "Zone entfernt.",
+      });
+    }
+  };
+
+  const fixBadgeVariant: Record<
+    string,
+    "success" | "warning" | "error" | "info" | "secondary"
+  > = {
     no_fix: "error",
     autonomous: "warning",
     dgps: "warning",
     rtk_float: "info",
     rtk_fixed: "success",
   };
+
+  const isDrawing = editMode === "draw";
+  const activeZone = activeZoneId
+    ? zones.find((z) => z.id === activeZoneId)
+    : null;
 
   return (
     <>
@@ -120,6 +224,26 @@ export function MapControls({
           {fixStatus.replace("_", " ").toUpperCase()}
         </Badge>
       </div>
+
+      {/* Top-left: Active zone info */}
+      {activeZone && !isDrawing && (
+        <div className="absolute top-3 left-3 z-[1000] bg-background/90 backdrop-blur rounded-lg p-2 shadow-lg max-w-48">
+          <div className="text-xs font-medium truncate">
+            {activeZone.properties.name}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {ZONE_TYPE_CONFIG[activeZone.properties.zoneType].label}
+          </div>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={handleDeleteActiveZone}
+            className="mt-1 h-6 text-xs w-full"
+          >
+            <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+          </Button>
+        </div>
+      )}
 
       {/* Bottom-left: Navigation controls */}
       <div className="absolute bottom-3 left-3 z-[1000] flex flex-col gap-2">
@@ -142,109 +266,262 @@ export function MapControls({
         </Button>
       </div>
 
-      {/* Bottom-right: Recording & Layer controls */}
+      {/* Bottom-right: Zone & Layer controls */}
       <div className="absolute bottom-3 right-3 z-[1000] flex flex-col gap-2 items-end">
-        {/* Record Boundary */}
-        <Button
-          size="sm"
-          variant={isRecordingBoundary ? "destructive" : "secondary"}
-          onClick={handleBoundaryToggle}
-          className={cn(
-            "shadow-lg",
-            isRecordingBoundary && "animate-pulse-record"
-          )}
-        >
-          <Circle
-            className={cn(
-              "h-4 w-4 mr-1",
-              isRecordingBoundary && "fill-current"
+        {/* Drawing mode controls */}
+        {isDrawing && (
+          <>
+            {/* Name input dialog */}
+            {showNameInput ? (
+              <div className="bg-background/95 backdrop-blur rounded-lg p-3 shadow-lg flex flex-col gap-2 w-56">
+                <label className="text-xs font-medium">Zonenname</label>
+                <input
+                  type="text"
+                  value={zoneName}
+                  onChange={(e) => setZoneName(e.target.value)}
+                  placeholder={ZONE_TYPE_CONFIG[newZoneType].label}
+                  className="h-8 px-2 text-sm rounded border border-border bg-background"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFinishDrawing();
+                    if (e.key === "Escape") setShowNameInput(false);
+                  }}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleFinishDrawing}
+                    className="flex-1 h-7"
+                  >
+                    <Check className="h-3 w-3 mr-1" /> Speichern
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowNameInput(false)}
+                    className="h-7"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-background/90 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg">
+                  <span className="text-xs">
+                    {ZONE_TYPE_CONFIG[newZoneType].label} zeichnen
+                    {drawingPoints.length > 0 &&
+                      ` (${drawingPoints.length} Punkte)`}
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  {drawingPoints.length >= 3 && (
+                    <Button
+                      size="sm"
+                      onClick={() => setShowNameInput(true)}
+                      className="shadow-lg"
+                    >
+                      <Check className="h-4 w-4 mr-1" /> Fertig
+                    </Button>
+                  )}
+                  {drawingPoints.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={undoDrawingPoint}
+                      className="shadow-lg"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      cancelDrawing();
+                      setShowNameInput(false);
+                      setZoneName("");
+                    }}
+                    className="shadow-lg"
+                  >
+                    <X className="h-4 w-4 mr-1" /> Abbrechen
+                  </Button>
+                </div>
+              </>
             )}
-          />
-          {isRecordingBoundary ? "Aufnahme stoppen" : "Grenze aufzeichnen"}
-        </Button>
-
-        {isRecordingBoundary && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={cancelBoundaryRecording}
-            className="shadow-lg"
-          >
-            Abbrechen
-          </Button>
+          </>
         )}
 
-        {/* Clear Track */}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={clearTrack}
-          className="shadow-lg"
-        >
-          <Trash2 className="h-4 w-4 mr-1" /> Track löschen
-        </Button>
+        {/* Normal mode controls */}
+        {!isDrawing && (
+          <>
+            {/* Zone creation menu */}
+            {showZoneMenu && (
+              <div className="bg-background/95 backdrop-blur rounded-lg p-2 shadow-lg flex flex-col gap-1 w-48">
+                <div className="text-xs font-medium px-2 py-1 text-muted-foreground">
+                  Zone zeichnen
+                </div>
+                {(
+                  Object.keys(ZONE_TYPE_CONFIG) as ZoneType[]
+                ).map((type) => {
+                  const Icon = ZONE_TYPE_ICONS[type];
+                  const config = ZONE_TYPE_CONFIG[type];
+                  return (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant="ghost"
+                      className="justify-start h-8 text-xs"
+                      onClick={() => handleStartDrawing(type)}
+                    >
+                      <Icon
+                        className="h-3 w-3 mr-2"
+                        style={{ color: config.color }}
+                      />
+                      {config.label}
+                    </Button>
+                  );
+                })}
+                <div className="border-t border-border my-1" />
+                <div className="text-xs font-medium px-2 py-1 text-muted-foreground">
+                  GPS-Aufnahme
+                </div>
+                <Button
+                  size="sm"
+                  variant={isRecordingBoundary ? "destructive" : "ghost"}
+                  className={cn(
+                    "justify-start h-8 text-xs",
+                    isRecordingBoundary && "animate-pulse-record"
+                  )}
+                  onClick={() => {
+                    handleGpsRecordToggle();
+                    if (!isRecordingBoundary) setShowZoneMenu(false);
+                  }}
+                >
+                  <Circle
+                    className={cn(
+                      "h-3 w-3 mr-2",
+                      isRecordingBoundary && "fill-current"
+                    )}
+                  />
+                  {isRecordingBoundary
+                    ? "Aufnahme stoppen"
+                    : "Grenze abfahren"}
+                </Button>
+              </div>
+            )}
 
-        {/* Map type switcher */}
-        <div className="flex gap-1">
-          <Button
-            size="icon"
-            variant={mapLayer === "roadmap" ? "default" : "outline"}
-            onClick={() => onChangeLayer("roadmap")}
-            className="shadow-lg h-8 w-8"
-            title="Karte"
-          >
-            <Map className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant={mapLayer === "satellite" ? "default" : "outline"}
-            onClick={() => onChangeLayer("satellite")}
-            className="shadow-lg h-8 w-8"
-            title="Satellit"
-          >
-            <Globe className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant={mapLayer === "hybrid" ? "default" : "outline"}
-            onClick={() => onChangeLayer("hybrid")}
-            className="shadow-lg h-8 w-8"
-            title="Hybrid"
-          >
-            <Layers className="h-3 w-3" />
-          </Button>
-        </div>
+            {/* Zone add button */}
+            <Button
+              size="sm"
+              variant={showZoneMenu ? "default" : "secondary"}
+              onClick={() => setShowZoneMenu(!showZoneMenu)}
+              className="shadow-lg"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Zone hinzufuegen
+            </Button>
 
-        {/* Data layer toggles */}
-        <div className="flex gap-1">
-          <Button
-            size="icon"
-            variant={showGarden ? "default" : "outline"}
-            onClick={onToggleGarden}
-            className="shadow-lg h-8 w-8"
-            title="Gartengrenze"
-          >
-            <svg viewBox="0 0 24 24" className="h-3 w-3 fill-current"><polygon points="4,4 20,4 20,20 4,20" strokeWidth="2" stroke="currentColor" fillOpacity="0.3" /></svg>
-          </Button>
-          <Button
-            size="icon"
-            variant={showTrack ? "default" : "outline"}
-            onClick={onToggleTrack}
-            className="shadow-lg h-8 w-8"
-            title="Fahrspur"
-          >
-            <Route className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant={showPaths ? "default" : "outline"}
-            onClick={onTogglePaths}
-            className="shadow-lg h-8 w-8"
-            title="Mähpfade"
-          >
-            <MapPin className="h-3 w-3" />
-          </Button>
-        </div>
+            {/* GPS recording cancel (when recording from menu) */}
+            {isRecordingBoundary && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleGpsRecordToggle}
+                className={cn("shadow-lg", "animate-pulse-record")}
+              >
+                <Circle className="h-4 w-4 mr-1 fill-current" />
+                Aufnahme stoppen
+              </Button>
+            )}
+
+            {isRecordingBoundary && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  cancelBoundaryRecording();
+                  toast({ title: "Aufnahme abgebrochen" });
+                }}
+                className="shadow-lg"
+              >
+                Abbrechen
+              </Button>
+            )}
+
+            {/* Clear Track */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clearTrack}
+              className="shadow-lg"
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Track loeschen
+            </Button>
+
+            {/* Map type switcher */}
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant={mapLayer === "roadmap" ? "default" : "outline"}
+                onClick={() => onChangeLayer("roadmap")}
+                className="shadow-lg h-8 w-8"
+                title="Karte"
+              >
+                <Map className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant={mapLayer === "satellite" ? "default" : "outline"}
+                onClick={() => onChangeLayer("satellite")}
+                className="shadow-lg h-8 w-8"
+                title="Satellit"
+              >
+                <Globe className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant={mapLayer === "hybrid" ? "default" : "outline"}
+                onClick={() => onChangeLayer("hybrid")}
+                className="shadow-lg h-8 w-8"
+                title="Hybrid"
+              >
+                <Layers className="h-3 w-3" />
+              </Button>
+            </div>
+
+            {/* Data layer toggles */}
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant={showZones ? "default" : "outline"}
+                onClick={onToggleZones}
+                className="shadow-lg h-8 w-8"
+                title="Zonen"
+              >
+                <Fence className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant={showTrack ? "default" : "outline"}
+                onClick={onToggleTrack}
+                className="shadow-lg h-8 w-8"
+                title="Fahrspur"
+              >
+                <Route className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant={showPaths ? "default" : "outline"}
+                onClick={onTogglePaths}
+                className="shadow-lg h-8 w-8"
+                title="Maehpfade"
+              >
+                <MapPin className="h-3 w-3" />
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </>
   );

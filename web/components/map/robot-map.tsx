@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { useGpsStore } from "@/lib/store/gps-store";
+import { useZoneStore } from "@/lib/store/zone-store";
 import { useMapDefaults } from "@/lib/hooks/use-map-center";
 import { RobotMarker } from "./robot-marker";
-import { GardenPolygon } from "./garden-polygon";
+import { ZoneLayer } from "./zone-layer";
+import { ZoneDrawHandler } from "./zone-draw-handler";
 import { TrackLayer } from "./track-layer";
 import { MowPathLayer } from "./mow-path-layer";
 import { MapControls } from "./map-controls";
@@ -56,7 +58,7 @@ export default function RobotMap({
 }: RobotMapProps) {
   const [following, setFollowing] = useState(false);
   const [showTrack, setShowTrack] = useState(true);
-  const [showGarden, setShowGarden] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   const [showPaths, setShowPaths] = useState(true);
   const [mapLayer, setMapLayer] = useState<MapLayerType>("hybrid");
   const mapRef = useRef<L.Map | null>(null);
@@ -64,6 +66,16 @@ export default function RobotMap({
   const latitude = useGpsStore((s) => s.latitude);
   const longitude = useGpsStore((s) => s.longitude);
   const { center: configCenter, zoom: configZoom } = useMapDefaults();
+  const loadZones = useZoneStore((s) => s.loadZones);
+  const zonesLoaded = useZoneStore((s) => s.loaded);
+  const editMode = useZoneStore((s) => s.editMode);
+
+  // Load saved zones on mount
+  useEffect(() => {
+    if (!zonesLoaded) {
+      loadZones();
+    }
+  }, [zonesLoaded, loadZones]);
 
   const center: [number, number] =
     latitude !== null && longitude !== null
@@ -94,9 +106,10 @@ export default function RobotMap({
           maxNativeZoom={tileConfig.maxNativeZoom}
         />
         <RobotMarker />
-        {showGarden && <GardenPolygon />}
+        {showZones && <ZoneLayer />}
         {showTrack && <TrackLayer />}
         {showPaths && <MowPathLayer />}
+        {editMode === "draw" && <ZoneDrawHandler />}
         <FollowRobot following={following} />
         <SetMapCenter center={configCenter} zoom={configZoom} active={latitude === null} />
       </MapContainer>
@@ -107,8 +120,8 @@ export default function RobotMap({
           onToggleFollow={() => setFollowing(!following)}
           showTrack={showTrack}
           onToggleTrack={() => setShowTrack(!showTrack)}
-          showGarden={showGarden}
-          onToggleGarden={() => setShowGarden(!showGarden)}
+          showZones={showZones}
+          onToggleZones={() => setShowZones(!showZones)}
           showPaths={showPaths}
           onTogglePaths={() => setShowPaths(!showPaths)}
           mapLayer={mapLayer}

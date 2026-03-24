@@ -17,10 +17,6 @@ interface ZoneState {
   editingZoneId: string | null;
   editingPoints: [number, number][]; // Working copy of zone points during edit
 
-  // Move state (moving entire zones)
-  movingZoneId: string | null;
-  moveOffset: [number, number]; // [deltaLat, deltaLon]
-
   // Actions — Data
   loadZones: () => Promise<void>;
   addZone: (zone: {
@@ -52,16 +48,11 @@ interface ZoneState {
   // Actions — Editing
   startEditing: (zoneId: string) => void;
   moveEditingPoint: (index: number, lat: number, lon: number) => void;
+  moveAllEditingPoints: (deltaLat: number, deltaLon: number) => void;
   addEditingPoint: (afterIndex: number, lat: number, lon: number) => void;
   removeEditingPoint: (index: number) => void;
   finishEditing: () => Promise<boolean>;
   cancelEditing: () => void;
-
-  // Actions — Moving
-  startMoving: (zoneId: string) => void;
-  setMoveOffset: (deltaLat: number, deltaLon: number) => void;
-  finishMoving: () => Promise<boolean>;
-  cancelMoving: () => void;
 
   // Helpers
   getZoneArea: (id: string) => number;
@@ -83,8 +74,6 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
   newZoneType: "garden",
   editingZoneId: null,
   editingPoints: [],
-  movingZoneId: null,
-  moveOffset: [0, 0],
 
   // --- Data Actions ---
 
@@ -244,6 +233,13 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
       return { editingPoints: points };
     }),
 
+  moveAllEditingPoints: (deltaLat, deltaLon) =>
+    set((state) => ({
+      editingPoints: state.editingPoints.map(
+        ([lat, lon]) => [lat + deltaLat, lon + deltaLon] as [number, number]
+      ),
+    })),
+
   addEditingPoint: (afterIndex, lat, lon) =>
     set((state) => {
       const points = [...state.editingPoints];
@@ -282,60 +278,6 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
       editMode: "none",
       editingZoneId: null,
       editingPoints: [],
-    }),
-
-  // --- Moving Actions ---
-
-  startMoving: (zoneId) => {
-    const zone = get().zones.find((z) => z.id === zoneId);
-    if (!zone || zone.geometry.type !== "Polygon") return;
-
-    set({
-      editMode: "move",
-      movingZoneId: zoneId,
-      moveOffset: [0, 0],
-      activeZoneId: zoneId,
-    });
-  },
-
-  setMoveOffset: (deltaLat, deltaLon) =>
-    set({ moveOffset: [deltaLat, deltaLon] }),
-
-  finishMoving: async () => {
-    const { movingZoneId, moveOffset, zones, updateZone } = get();
-    if (!movingZoneId) return false;
-
-    const zone = zones.find((z) => z.id === movingZoneId);
-    if (!zone || zone.geometry.type !== "Polygon") return false;
-
-    const [dLat, dLon] = moveOffset;
-    if (dLat === 0 && dLon === 0) {
-      // No movement — just cancel
-      set({ editMode: "none", movingZoneId: null, moveOffset: [0, 0] });
-      return true;
-    }
-
-    // Apply offset to all points: GeoJSON [lon, lat] -> shift -> convert to [lat, lon] for API
-    const coords = zone.geometry.coordinates as number[][][];
-    const ring = coords[0];
-    const movedPoints: [number, number][] = ring
-      .slice(0, -1) // Remove closing point
-      .map(([lon, lat]) => [lat + dLat, lon + dLon] as [number, number]);
-
-    const success = await updateZone(movingZoneId, { points: movedPoints });
-
-    if (success) {
-      set({ editMode: "none", movingZoneId: null, moveOffset: [0, 0] });
-    }
-
-    return success;
-  },
-
-  cancelMoving: () =>
-    set({
-      editMode: "none",
-      movingZoneId: null,
-      moveOffset: [0, 0],
     }),
 
   // --- Helpers ---

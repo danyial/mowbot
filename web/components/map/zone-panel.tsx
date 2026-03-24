@@ -3,7 +3,6 @@
 import {
   Pencil,
   Trash2,
-  Move,
   Crosshair,
   X,
   Fence,
@@ -55,7 +54,6 @@ function ZoneRow({
   const activeZoneId = useZoneStore((s) => s.activeZoneId);
   const setActiveZone = useZoneStore((s) => s.setActiveZone);
   const startEditing = useZoneStore((s) => s.startEditing);
-  const startMoving = useZoneStore((s) => s.startMoving);
   const deleteZone = useZoneStore((s) => s.deleteZone);
   const editMode = useZoneStore((s) => s.editMode);
 
@@ -79,11 +77,6 @@ function ZoneRow({
   const handleEdit = () => {
     if (zone.geometry.type !== "Polygon") return;
     startEditing(zone.id);
-  };
-
-  const handleMove = () => {
-    if (zone.geometry.type !== "Polygon") return;
-    startMoving(zone.id);
   };
 
   const handleDelete = async () => {
@@ -145,28 +138,16 @@ function ZoneRow({
           <Crosshair className="h-3 w-3" />
         </Button>
         {zone.geometry.type === "Polygon" && (
-          <>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6"
-              title="Bearbeiten"
-              onClick={handleEdit}
-              disabled={isBusy}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6"
-              title="Verschieben"
-              onClick={handleMove}
-              disabled={isBusy}
-            >
-              <Move className="h-3 w-3" />
-            </Button>
-          </>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            title="Bearbeiten"
+            onClick={handleEdit}
+            disabled={isBusy}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
         )}
         <Button
           size="icon"

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
-import { Polygon, CircleMarker, Marker, Tooltip } from "react-leaflet";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Polygon, CircleMarker, Marker, Tooltip, useMapEvents } from "react-leaflet";
 import L, { LatLngExpression } from "leaflet";
 import * as turf from "@turf/turf";
 import { useZoneStore } from "@/lib/store/zone-store";
@@ -256,9 +256,48 @@ function DraggableVertex({
 }
 
 /**
+ * Handles drag-to-move for the entire editing polygon.
+ * Listens for mousedown on the polygon, then tracks mousemove on the map
+ * to shift all editing points by the drag delta.
+ */
+function PolygonDragHandler({
+  onMove,
+}: {
+  onMove: (deltaLat: number, deltaLon: number) => void;
+}) {
+  const dragStart = useRef<{ lat: number; lon: number } | null>(null);
+
+  useMapEvents({
+    mousemove(e) {
+      if (!dragStart.current) return;
+      const { lat, lng: lon } = e.latlng;
+      const dLat = lat - dragStart.current.lat;
+      const dLon = lon - dragStart.current.lon;
+      dragStart.current = { lat, lon };
+      onMove(dLat, dLon);
+    },
+    mouseup() {
+      if (dragStart.current) {
+        dragStart.current = null;
+      }
+    },
+  });
+
+  // Expose a way to start dragging (called from polygon mousedown)
+  // We attach this to the window so the Polygon event handler can trigger it
+  // This is cleaner than lifting state — the handler is local to the edit session
+  (PolygonDragHandler as unknown as { start: (lat: number, lon: number) => void }).start =
+    (lat: number, lon: number) => {
+      dragStart.current = { lat, lon };
+    };
+
+  return null;
+}
+
+/**
  * Renders the editing overlay for an existing zone.
  * Shows:
- *  - The polygon with current editing points
+ *  - The polygon with current editing points (draggable to move entire zone)
  *  - Draggable vertex markers at each point
  *  - Midpoint markers between vertices to add new points
  */
@@ -268,9 +307,11 @@ export function EditingOverlay() {
     editingZoneId,
     zones,
     moveEditingPoint,
+    moveAllEditingPoints,
     addEditingPoint,
     removeEditingPoint,
   } = useZoneStore();
+  const [isDragging, setIsDragging] = useState(false);
 
   const zone = zones.find((z) => z.id === editingZoneId);
   if (!zone || editingPoints.length < 3) return null;
@@ -298,16 +339,33 @@ export function EditingOverlay() {
 
   return (
     <>
-      {/* Editing polygon preview */}
+      {/* Polygon drag handler (listens for map mousemove/mouseup) */}
+      <PolygonDragHandler onMove={moveAllEditingPoints} />
+
+      {/* Editing polygon — draggable to move entire zone */}
       <Polygon
         positions={positions}
-        interactive={false}
         pathOptions={{
           color,
           fillColor: color,
           fillOpacity: 0.15,
           weight: 2,
-          dashArray: "6, 6",
+          dashArray: isDragging ? undefined : "6, 6",
+          className: "cursor-move",
+        }}
+        eventHandlers={{
+          mousedown: (e) => {
+            L.DomEvent.stopPropagation(e);
+            const { lat, lng: lon } = e.latlng;
+            (PolygonDragHandler as unknown as { start: (lat: number, lon: number) => void }).start(lat, lon);
+            setIsDragging(true);
+            // Disable map dragging while moving the polygon
+            e.target._map?.dragging.disable();
+          },
+          mouseup: (e) => {
+            setIsDragging(false);
+            e.target._map?.dragging.enable();
+          },
         }}
       />
 
@@ -323,7 +381,7 @@ export function EditingOverlay() {
         />
       ))}
 
-      {/* Midpoint markers — click or drag to insert a new vertex */}
+      {/* Midpoint markers — click to insert a new vertex */}
       {midpoints.map(({ position, afterIndex }) => (
         <Marker
           key={`m-${afterIndex}`}
@@ -341,135 +399,25 @@ export function EditingOverlay() {
 }
 
 /**
- * Create a Leaflet DivIcon for the move handle (center drag marker)
- */
-function createMoveIcon() {
-  return L.divIcon({
-    className: "",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `<div style="
-      width: 28px;
-      height: 28px;
-      background: rgba(255,255,255,0.95);
-      border: 2px solid #3b82f6;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      cursor: grab;
-    "><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
-    </svg></div>`,
-  });
-}
-
-/**
- * Renders the moving overlay for an existing zone.
- * Shows the polygon shifted by the current offset + a draggable center marker.
- */
-export function MovingOverlay() {
-  const { movingZoneId, moveOffset, zones, setMoveOffset } = useZoneStore();
-  const markerRef = useRef<L.Marker>(null);
-
-  const zone = zones.find((z) => z.id === movingZoneId);
-  if (!zone || zone.geometry.type !== "Polygon") return null;
-
-  const config = ZONE_TYPE_CONFIG[zone.properties.zoneType];
-  const color = zone.properties.color || config.color;
-  const coords = zone.geometry.coordinates as number[][][];
-  const ring = coords[0];
-
-  // Calculate centroid of original zone
-  const ringNoClose = ring.slice(0, -1);
-  const centroidLat = ringNoClose.reduce((s, c) => s + c[1], 0) / ringNoClose.length;
-  const centroidLon = ringNoClose.reduce((s, c) => s + c[0], 0) / ringNoClose.length;
-
-  const [dLat, dLon] = moveOffset;
-
-  // Shifted polygon positions
-  const shiftedPositions: LatLngExpression[] = ring.map(
-    ([lon, lat]) => [lat + dLat, lon + dLon] as LatLngExpression
-  );
-
-  // Drag handle position (shifted centroid)
-  const handlePosition: [number, number] = [centroidLat + dLat, centroidLon + dLon];
-
-  const moveIcon = useMemo(() => createMoveIcon(), []);
-
-  const handleDrag = useCallback(() => {
-    const marker = markerRef.current;
-    if (!marker) return;
-    const { lat, lng } = marker.getLatLng();
-    // New offset = (new position - original centroid)
-    setMoveOffset(lat - centroidLat, lng - centroidLon);
-  }, [centroidLat, centroidLon, setMoveOffset]);
-
-  return (
-    <>
-      {/* Ghost of original position */}
-      <Polygon
-        positions={ring.map(([lon, lat]) => [lat, lon] as LatLngExpression)}
-        interactive={false}
-        pathOptions={{
-          color: color,
-          fillColor: color,
-          fillOpacity: 0.05,
-          weight: 1,
-          dashArray: "4, 8",
-          opacity: 0.4,
-        }}
-      />
-
-      {/* Shifted polygon preview */}
-      <Polygon
-        positions={shiftedPositions}
-        interactive={false}
-        pathOptions={{
-          color,
-          fillColor: color,
-          fillOpacity: 0.2,
-          weight: 2,
-          dashArray: "6, 6",
-        }}
-      />
-
-      {/* Drag handle at centroid */}
-      <Marker
-        ref={markerRef}
-        position={handlePosition}
-        icon={moveIcon}
-        draggable
-        eventHandlers={{ drag: handleDrag, dragend: handleDrag }}
-      />
-    </>
-  );
-}
-
-/**
  * Main zone layer component — renders all saved zones + drawing preview
  */
 export function ZoneLayer() {
-  const { zones, editMode, editingZoneId, movingZoneId } = useZoneStore();
+  const { zones, editMode, editingZoneId } = useZoneStore();
 
   return (
     <>
-      {/* Saved zones (hide the one being edited/moved) */}
-      {zones.map((zone) => {
-        if (editMode === "edit" && zone.id === editingZoneId) return null;
-        if (editMode === "move" && zone.id === movingZoneId) return null;
-        return <ZonePolygon key={zone.id} zone={zone} />;
-      })}
+      {/* Saved zones (hide the one being edited) */}
+      {zones.map((zone) =>
+        editMode === "edit" && zone.id === editingZoneId ? null : (
+          <ZonePolygon key={zone.id} zone={zone} />
+        )
+      )}
 
       {/* Drawing preview */}
       {editMode === "draw" && <DrawingPreview />}
 
       {/* Editing overlay */}
       {editMode === "edit" && <EditingOverlay />}
-
-      {/* Moving overlay */}
-      {editMode === "move" && <MovingOverlay />}
     </>
   );
 }

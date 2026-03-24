@@ -230,7 +230,7 @@ function DraggableVertex({
   const markerRef = useRef<L.Marker>(null);
   const icon = useMemo(() => createVertexIcon(color, false), [color]);
 
-  const handleDragEnd = useCallback(() => {
+  const handleDrag = useCallback(() => {
     const marker = markerRef.current;
     if (!marker) return;
     const { lat, lng } = marker.getLatLng();
@@ -244,7 +244,8 @@ function DraggableVertex({
       icon={icon}
       draggable
       eventHandlers={{
-        dragend: handleDragEnd,
+        drag: handleDrag,
+        dragend: handleDrag,
         contextmenu: (e) => {
           L.DomEvent.stopPropagation(e);
           onRemove(index);
@@ -397,7 +398,7 @@ export function MovingOverlay() {
 
   const moveIcon = useMemo(() => createMoveIcon(), []);
 
-  const handleDragEnd = useCallback(() => {
+  const handleDrag = useCallback(() => {
     const marker = markerRef.current;
     if (!marker) return;
     const { lat, lng } = marker.getLatLng();
@@ -440,7 +441,7 @@ export function MovingOverlay() {
         position={handlePosition}
         icon={moveIcon}
         draggable
-        eventHandlers={{ dragend: handleDragEnd }}
+        eventHandlers={{ drag: handleDrag, dragend: handleDrag }}
       />
     </>
   );

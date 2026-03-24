@@ -117,12 +117,11 @@ function ZoneRow({
         <div className="text-xs font-medium truncate">
           {zone.properties.name}
         </div>
-        <div className="text-[10px] text-muted-foreground flex gap-1.5">
-          <span>{config.label}</span>
-          {area != null && area > 0 && (
-            <span>{formatArea(area)}</span>
-          )}
-        </div>
+        {area != null && area > 0 && (
+          <div className="text-[10px] text-muted-foreground">
+            {formatArea(area)}
+          </div>
+        )}
       </button>
 
       {/* Action buttons */}

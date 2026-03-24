@@ -77,4 +77,4 @@ export const ZONE_TYPE_CONFIG: Record<
   },
 };
 
-export type EditMode = "none" | "draw" | "record" | "edit";
+export type EditMode = "none" | "draw" | "record" | "edit" | "move";

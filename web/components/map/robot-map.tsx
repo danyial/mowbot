@@ -12,6 +12,7 @@ import { ZoneDrawHandler } from "./zone-draw-handler";
 import { TrackLayer } from "./track-layer";
 import { MowPathLayer } from "./mow-path-layer";
 import { MapControls } from "./map-controls";
+import { ZonePanel } from "./zone-panel";
 import { SetMapCenter } from "./set-map-center";
 
 export type MapLayerType = "roadmap" | "satellite" | "hybrid";
@@ -60,6 +61,7 @@ export default function RobotMap({
   const [showTrack, setShowTrack] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [showPaths, setShowPaths] = useState(true);
+  const [showZonePanel, setShowZonePanel] = useState(false);
   const [mapLayer, setMapLayer] = useState<MapLayerType>("hybrid");
   const mapRef = useRef<L.Map | null>(null);
 
@@ -115,19 +117,34 @@ export default function RobotMap({
       </MapContainer>
 
       {showControls && (
-        <MapControls
-          following={following}
-          onToggleFollow={() => setFollowing(!following)}
-          showTrack={showTrack}
-          onToggleTrack={() => setShowTrack(!showTrack)}
-          showZones={showZones}
-          onToggleZones={() => setShowZones(!showZones)}
-          showPaths={showPaths}
-          onTogglePaths={() => setShowPaths(!showPaths)}
-          mapLayer={mapLayer}
-          onChangeLayer={setMapLayer}
-          mapRef={mapRef}
-        />
+        <>
+          <MapControls
+            following={following}
+            onToggleFollow={() => setFollowing(!following)}
+            showTrack={showTrack}
+            onToggleTrack={() => setShowTrack(!showTrack)}
+            showZones={showZones}
+            onToggleZones={() => setShowZones(!showZones)}
+            showPaths={showPaths}
+            onTogglePaths={() => setShowPaths(!showPaths)}
+            mapLayer={mapLayer}
+            onChangeLayer={setMapLayer}
+            mapRef={mapRef}
+            showZonePanel={showZonePanel}
+            onToggleZonePanel={() => setShowZonePanel(!showZonePanel)}
+          />
+          <ZonePanel
+            open={showZonePanel}
+            onClose={() => setShowZonePanel(false)}
+            onFocusZone={(lat, lon) => {
+              if (mapRef.current) {
+                mapRef.current.setView([lat, lon], mapRef.current.getZoom(), {
+                  animate: true,
+                });
+              }
+            }}
+          />
+        </>
       )}
     </div>
   );

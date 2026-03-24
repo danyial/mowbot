@@ -21,6 +21,8 @@ import {
   ArrowRightLeft,
   BatteryCharging,
   Pencil,
+  Move,
+  List,
 } from "lucide-react";
 import type { MapLayerType } from "./robot-map";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,8 @@ interface MapControlsProps {
   mapLayer: MapLayerType;
   onChangeLayer: (layer: MapLayerType) => void;
   mapRef: MutableRefObject<L.Map | null>;
+  showZonePanel: boolean;
+  onToggleZonePanel: () => void;
 }
 
 const ZONE_TYPE_ICONS: Record<ZoneType, typeof Fence> = {
@@ -66,6 +70,8 @@ export function MapControls({
   mapLayer,
   onChangeLayer,
   mapRef,
+  showZonePanel,
+  onToggleZonePanel,
 }: MapControlsProps) {
   const latitude = useGpsStore((s) => s.latitude);
   const longitude = useGpsStore((s) => s.longitude);
@@ -92,6 +98,9 @@ export function MapControls({
   const editingPoints = useZoneStore((s) => s.editingPoints);
   const finishEditing = useZoneStore((s) => s.finishEditing);
   const cancelEditing = useZoneStore((s) => s.cancelEditing);
+  const startMoving = useZoneStore((s) => s.startMoving);
+  const finishMoving = useZoneStore((s) => s.finishMoving);
+  const cancelMoving = useZoneStore((s) => s.cancelMoving);
 
   const [showZoneMenu, setShowZoneMenu] = useState(false);
   const [zoneName, setZoneName] = useState("");
@@ -237,8 +246,31 @@ export function MapControls({
     toast({ title: "Bearbeitung abgebrochen" });
   };
 
+  const handleFinishMoving = async () => {
+    const success = await finishMoving();
+    if (success) {
+      toast({
+        title: "Zone verschoben",
+        description: "Neue Position gespeichert.",
+        variant: "success",
+      });
+    } else {
+      toast({
+        title: "Fehler",
+        description: "Zone konnte nicht verschoben werden.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelMoving = () => {
+    cancelMoving();
+    toast({ title: "Verschieben abgebrochen" });
+  };
+
   const isDrawing = editMode === "draw";
   const isEditing = editMode === "edit";
+  const isMoving = editMode === "move";
   const isIdle = editMode === "none";
   const activeZone = activeZoneId
     ? zones.find((z) => z.id === activeZoneId)
@@ -265,24 +297,34 @@ export function MapControls({
           </div>
           <div className="flex gap-1 mt-1">
             {activeZone.geometry.type === "Polygon" && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => startEditing(activeZone.id)}
-                className="h-6 text-xs flex-1"
-              >
-                <Pencil className="h-3 w-3 mr-1" /> Bearbeiten
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => startEditing(activeZone.id)}
+                  className="h-6 text-xs flex-1"
+                >
+                  <Pencil className="h-3 w-3 mr-1" /> Bearbeiten
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => startMoving(activeZone.id)}
+                  className="h-6 text-xs flex-1"
+                >
+                  <Move className="h-3 w-3 mr-1" /> Verschieben
+                </Button>
+              </>
             )}
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleDeleteActiveZone}
-              className="h-6 text-xs flex-1"
-            >
-              <Trash2 className="h-3 w-3 mr-1" /> Loeschen
-            </Button>
           </div>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={handleDeleteActiveZone}
+            className="mt-1 h-6 text-xs w-full"
+          >
+            <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+          </Button>
         </div>
       )}
 
@@ -424,6 +466,35 @@ export function MapControls({
           </>
         )}
 
+        {/* Moving mode controls */}
+        {isMoving && (
+          <>
+            <div className="bg-background/90 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg">
+              <span className="text-xs">Zone verschieben</span>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Mittelpunkt an neue Position ziehen
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                onClick={handleFinishMoving}
+                className="shadow-lg"
+              >
+                <Check className="h-4 w-4 mr-1" /> Speichern
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleCancelMoving}
+                className="shadow-lg"
+              >
+                <X className="h-4 w-4 mr-1" /> Abbrechen
+              </Button>
+            </div>
+          </>
+        )}
+
         {/* Normal mode controls */}
         {isIdle && (
           <>
@@ -493,6 +564,19 @@ export function MapControls({
               <Plus className="h-4 w-4 mr-1" />
               Zone hinzufuegen
             </Button>
+
+            {/* Zone panel toggle */}
+            {zones.length > 0 && (
+              <Button
+                size="sm"
+                variant={showZonePanel ? "default" : "secondary"}
+                onClick={onToggleZonePanel}
+                className="shadow-lg"
+              >
+                <List className="h-4 w-4 mr-1" />
+                Zonen verwalten
+              </Button>
+            )}
 
             {/* GPS recording cancel (when recording from menu) */}
             {isRecordingBoundary && (

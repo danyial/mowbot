@@ -340,25 +340,135 @@ export function EditingOverlay() {
 }
 
 /**
- * Main zone layer component — renders all saved zones + drawing preview
+ * Create a Leaflet DivIcon for the move handle (center drag marker)
  */
-export function ZoneLayer() {
-  const { zones, editMode, editingZoneId } = useZoneStore();
+function createMoveIcon() {
+  return L.divIcon({
+    className: "",
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    html: `<div style="
+      width: 28px;
+      height: 28px;
+      background: rgba(255,255,255,0.95);
+      border: 2px solid #3b82f6;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      cursor: grab;
+    "><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+    </svg></div>`,
+  });
+}
+
+/**
+ * Renders the moving overlay for an existing zone.
+ * Shows the polygon shifted by the current offset + a draggable center marker.
+ */
+export function MovingOverlay() {
+  const { movingZoneId, moveOffset, zones, setMoveOffset } = useZoneStore();
+  const markerRef = useRef<L.Marker>(null);
+
+  const zone = zones.find((z) => z.id === movingZoneId);
+  if (!zone || zone.geometry.type !== "Polygon") return null;
+
+  const config = ZONE_TYPE_CONFIG[zone.properties.zoneType];
+  const color = zone.properties.color || config.color;
+  const coords = zone.geometry.coordinates as number[][][];
+  const ring = coords[0];
+
+  // Calculate centroid of original zone
+  const ringNoClose = ring.slice(0, -1);
+  const centroidLat = ringNoClose.reduce((s, c) => s + c[1], 0) / ringNoClose.length;
+  const centroidLon = ringNoClose.reduce((s, c) => s + c[0], 0) / ringNoClose.length;
+
+  const [dLat, dLon] = moveOffset;
+
+  // Shifted polygon positions
+  const shiftedPositions: LatLngExpression[] = ring.map(
+    ([lon, lat]) => [lat + dLat, lon + dLon] as LatLngExpression
+  );
+
+  // Drag handle position (shifted centroid)
+  const handlePosition: [number, number] = [centroidLat + dLat, centroidLon + dLon];
+
+  const moveIcon = useMemo(() => createMoveIcon(), []);
+
+  const handleDragEnd = useCallback(() => {
+    const marker = markerRef.current;
+    if (!marker) return;
+    const { lat, lng } = marker.getLatLng();
+    // New offset = (new position - original centroid)
+    setMoveOffset(lat - centroidLat, lng - centroidLon);
+  }, [centroidLat, centroidLon, setMoveOffset]);
 
   return (
     <>
-      {/* Saved zones (hide the one being edited) */}
-      {zones.map((zone) =>
-        editMode === "edit" && zone.id === editingZoneId ? null : (
-          <ZonePolygon key={zone.id} zone={zone} />
-        )
-      )}
+      {/* Ghost of original position */}
+      <Polygon
+        positions={ring.map(([lon, lat]) => [lat, lon] as LatLngExpression)}
+        interactive={false}
+        pathOptions={{
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.05,
+          weight: 1,
+          dashArray: "4, 8",
+          opacity: 0.4,
+        }}
+      />
+
+      {/* Shifted polygon preview */}
+      <Polygon
+        positions={shiftedPositions}
+        interactive={false}
+        pathOptions={{
+          color,
+          fillColor: color,
+          fillOpacity: 0.2,
+          weight: 2,
+          dashArray: "6, 6",
+        }}
+      />
+
+      {/* Drag handle at centroid */}
+      <Marker
+        ref={markerRef}
+        position={handlePosition}
+        icon={moveIcon}
+        draggable
+        eventHandlers={{ dragend: handleDragEnd }}
+      />
+    </>
+  );
+}
+
+/**
+ * Main zone layer component — renders all saved zones + drawing preview
+ */
+export function ZoneLayer() {
+  const { zones, editMode, editingZoneId, movingZoneId } = useZoneStore();
+
+  return (
+    <>
+      {/* Saved zones (hide the one being edited/moved) */}
+      {zones.map((zone) => {
+        if (editMode === "edit" && zone.id === editingZoneId) return null;
+        if (editMode === "move" && zone.id === movingZoneId) return null;
+        return <ZonePolygon key={zone.id} zone={zone} />;
+      })}
 
       {/* Drawing preview */}
       {editMode === "draw" && <DrawingPreview />}
 
       {/* Editing overlay */}
       {editMode === "edit" && <EditingOverlay />}
+
+      {/* Moving overlay */}
+      {editMode === "move" && <MovingOverlay />}
     </>
   );
 }

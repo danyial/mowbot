@@ -20,6 +20,7 @@ import {
   Scissors,
   ArrowRightLeft,
   BatteryCharging,
+  Pencil,
 } from "lucide-react";
 import type { MapLayerType } from "./robot-map";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,10 @@ export function MapControls({
   const activeZoneId = useZoneStore((s) => s.activeZoneId);
   const deleteZone = useZoneStore((s) => s.deleteZone);
   const zones = useZoneStore((s) => s.zones);
+  const startEditing = useZoneStore((s) => s.startEditing);
+  const editingPoints = useZoneStore((s) => s.editingPoints);
+  const finishEditing = useZoneStore((s) => s.finishEditing);
+  const cancelEditing = useZoneStore((s) => s.cancelEditing);
 
   const [showZoneMenu, setShowZoneMenu] = useState(false);
   const [zoneName, setZoneName] = useState("");
@@ -210,7 +215,31 @@ export function MapControls({
     rtk_fixed: "success",
   };
 
+  const handleFinishEditing = async () => {
+    const success = await finishEditing();
+    if (success) {
+      toast({
+        title: "Zone aktualisiert",
+        description: "Aenderungen gespeichert.",
+        variant: "success",
+      });
+    } else {
+      toast({
+        title: "Fehler",
+        description: "Zone konnte nicht aktualisiert werden.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelEditing = () => {
+    cancelEditing();
+    toast({ title: "Bearbeitung abgebrochen" });
+  };
+
   const isDrawing = editMode === "draw";
+  const isEditing = editMode === "edit";
+  const isIdle = editMode === "none";
   const activeZone = activeZoneId
     ? zones.find((z) => z.id === activeZoneId)
     : null;
@@ -226,7 +255,7 @@ export function MapControls({
       </div>
 
       {/* Top-left: Active zone info */}
-      {activeZone && !isDrawing && (
+      {activeZone && editMode === "none" && (
         <div className="absolute top-3 left-3 z-[1000] bg-background/90 backdrop-blur rounded-lg p-2 shadow-lg max-w-48">
           <div className="text-xs font-medium truncate">
             {activeZone.properties.name}
@@ -234,14 +263,26 @@ export function MapControls({
           <div className="text-xs text-muted-foreground">
             {ZONE_TYPE_CONFIG[activeZone.properties.zoneType].label}
           </div>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={handleDeleteActiveZone}
-            className="mt-1 h-6 text-xs w-full"
-          >
-            <Trash2 className="h-3 w-3 mr-1" /> Loeschen
-          </Button>
+          <div className="flex gap-1 mt-1">
+            {activeZone.geometry.type === "Polygon" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => startEditing(activeZone.id)}
+                className="h-6 text-xs flex-1"
+              >
+                <Pencil className="h-3 w-3 mr-1" /> Bearbeiten
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleDeleteActiveZone}
+              className="h-6 text-xs flex-1"
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+            </Button>
+          </div>
         </div>
       )}
 
@@ -352,8 +393,39 @@ export function MapControls({
           </>
         )}
 
+        {/* Editing mode controls */}
+        {isEditing && (
+          <>
+            <div className="bg-background/90 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg">
+              <span className="text-xs">
+                Zone bearbeiten ({editingPoints.length} Punkte)
+              </span>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Punkte verschieben oder Mittelpunkte antippen
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                onClick={handleFinishEditing}
+                className="shadow-lg"
+              >
+                <Check className="h-4 w-4 mr-1" /> Speichern
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleCancelEditing}
+                className="shadow-lg"
+              >
+                <X className="h-4 w-4 mr-1" /> Abbrechen
+              </Button>
+            </div>
+          </>
+        )}
+
         {/* Normal mode controls */}
-        {!isDrawing && (
+        {isIdle && (
           <>
             {/* Zone creation menu */}
             {showZoneMenu && (

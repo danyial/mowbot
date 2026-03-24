@@ -13,6 +13,10 @@ interface ZoneState {
   drawingPoints: [number, number][]; // [lat, lon] pairs
   newZoneType: ZoneType;
 
+  // Edit state (editing existing zones)
+  editingZoneId: string | null;
+  editingPoints: [number, number][]; // Working copy of zone points during edit
+
   // Actions — Data
   loadZones: () => Promise<void>;
   addZone: (zone: {
@@ -41,6 +45,14 @@ interface ZoneState {
   finishDrawing: (name: string) => Promise<Zone | null>;
   cancelDrawing: () => void;
 
+  // Actions — Editing
+  startEditing: (zoneId: string) => void;
+  moveEditingPoint: (index: number, lat: number, lon: number) => void;
+  addEditingPoint: (afterIndex: number, lat: number, lon: number) => void;
+  removeEditingPoint: (index: number) => void;
+  finishEditing: () => Promise<boolean>;
+  cancelEditing: () => void;
+
   // Helpers
   getZoneArea: (id: string) => number;
   isPointInZone: (lat: number, lon: number, zoneId: string) => boolean;
@@ -59,6 +71,8 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
   editMode: "none",
   drawingPoints: [],
   newZoneType: "garden",
+  editingZoneId: null,
+  editingPoints: [],
 
   // --- Data Actions ---
 
@@ -187,6 +201,75 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
     set({
       editMode: "none",
       drawingPoints: [],
+    }),
+
+  // --- Editing Actions ---
+
+  startEditing: (zoneId) => {
+    const zone = get().zones.find((z) => z.id === zoneId);
+    if (!zone || zone.geometry.type !== "Polygon") return;
+
+    // Convert GeoJSON [lon, lat] coordinates to [lat, lon] for editing
+    const coords = zone.geometry.coordinates as number[][][];
+    const ring = coords[0];
+    // Remove the closing point (last === first in GeoJSON)
+    const points: [number, number][] = ring
+      .slice(0, -1)
+      .map(([lon, lat]) => [lat, lon] as [number, number]);
+
+    set({
+      editMode: "edit",
+      editingZoneId: zoneId,
+      editingPoints: points,
+      activeZoneId: zoneId,
+    });
+  },
+
+  moveEditingPoint: (index, lat, lon) =>
+    set((state) => {
+      const points = [...state.editingPoints];
+      points[index] = [lat, lon];
+      return { editingPoints: points };
+    }),
+
+  addEditingPoint: (afterIndex, lat, lon) =>
+    set((state) => {
+      const points = [...state.editingPoints];
+      points.splice(afterIndex + 1, 0, [lat, lon]);
+      return { editingPoints: points };
+    }),
+
+  removeEditingPoint: (index) =>
+    set((state) => {
+      if (state.editingPoints.length <= 3) return state; // Minimum 3 points
+      const points = state.editingPoints.filter((_, i) => i !== index);
+      return { editingPoints: points };
+    }),
+
+  finishEditing: async () => {
+    const { editingZoneId, editingPoints, updateZone } = get();
+    if (!editingZoneId || editingPoints.length < 3) return false;
+
+    const success = await updateZone(editingZoneId, {
+      points: editingPoints,
+    });
+
+    if (success) {
+      set({
+        editMode: "none",
+        editingZoneId: null,
+        editingPoints: [],
+      });
+    }
+
+    return success;
+  },
+
+  cancelEditing: () =>
+    set({
+      editMode: "none",
+      editingZoneId: null,
+      editingPoints: [],
     }),
 
   // --- Helpers ---

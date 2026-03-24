@@ -1,7 +1,8 @@
 "use client";
 
-import { Polygon, CircleMarker, Tooltip } from "react-leaflet";
-import { LatLngExpression } from "leaflet";
+import { useCallback, useMemo, useRef } from "react";
+import { Polygon, CircleMarker, Marker, Tooltip } from "react-leaflet";
+import L, { LatLngExpression } from "leaflet";
 import * as turf from "@turf/turf";
 import { useZoneStore } from "@/lib/store/zone-store";
 import { ZONE_TYPE_CONFIG } from "@/lib/types/zones";
@@ -130,10 +131,11 @@ function DrawingPreview() {
 
   return (
     <>
-      {/* Preview polygon (when 3+ points) */}
+      {/* Preview polygon (when 3+ points) — interactive=false so clicks pass through to map */}
       {drawingPoints.length >= 3 && (
         <Polygon
           positions={positions}
+          interactive={false}
           pathOptions={{
             color: config.color,
             fillColor: config.color,
@@ -150,6 +152,7 @@ function DrawingPreview() {
           key={i}
           center={[lat, lon]}
           radius={i === 0 ? 6 : 4}
+          interactive={false}
           pathOptions={{
             color: config.color,
             fillColor: i === 0 ? config.color : "#ffffff",
@@ -169,20 +172,193 @@ function DrawingPreview() {
 }
 
 /**
- * Main zone layer component — renders all saved zones + drawing preview
+ * Create a Leaflet DivIcon for draggable vertex markers
  */
-export function ZoneLayer() {
-  const { zones, editMode } = useZoneStore();
+function createVertexIcon(color: string, isActive: boolean) {
+  const size = isActive ? 14 : 10;
+  return L.divIcon({
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<div style="
+      width: ${size}px;
+      height: ${size}px;
+      background: #ffffff;
+      border: 2.5px solid ${color};
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      cursor: grab;
+    "></div>`,
+  });
+}
+
+/**
+ * Create a Leaflet DivIcon for midpoint markers (add point between vertices)
+ */
+function createMidpointIcon(color: string) {
+  return L.divIcon({
+    className: "",
+    iconSize: [8, 8],
+    iconAnchor: [4, 4],
+    html: `<div style="
+      width: 8px;
+      height: 8px;
+      background: ${color};
+      opacity: 0.5;
+      border-radius: 50%;
+      cursor: pointer;
+    "></div>`,
+  });
+}
+
+/**
+ * A single draggable vertex marker
+ */
+function DraggableVertex({
+  position,
+  index,
+  color,
+  onMove,
+  onRemove,
+}: {
+  position: [number, number];
+  index: number;
+  color: string;
+  onMove: (index: number, lat: number, lon: number) => void;
+  onRemove: (index: number) => void;
+}) {
+  const markerRef = useRef<L.Marker>(null);
+  const icon = useMemo(() => createVertexIcon(color, false), [color]);
+
+  const handleDragEnd = useCallback(() => {
+    const marker = markerRef.current;
+    if (!marker) return;
+    const { lat, lng } = marker.getLatLng();
+    onMove(index, lat, lng);
+  }, [index, onMove]);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={position}
+      icon={icon}
+      draggable
+      eventHandlers={{
+        dragend: handleDragEnd,
+        contextmenu: (e) => {
+          L.DomEvent.stopPropagation(e);
+          onRemove(index);
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * Renders the editing overlay for an existing zone.
+ * Shows:
+ *  - The polygon with current editing points
+ *  - Draggable vertex markers at each point
+ *  - Midpoint markers between vertices to add new points
+ */
+export function EditingOverlay() {
+  const {
+    editingPoints,
+    editingZoneId,
+    zones,
+    moveEditingPoint,
+    addEditingPoint,
+    removeEditingPoint,
+  } = useZoneStore();
+
+  const zone = zones.find((z) => z.id === editingZoneId);
+  if (!zone || editingPoints.length < 3) return null;
+
+  const config = ZONE_TYPE_CONFIG[zone.properties.zoneType];
+  const color = zone.properties.color || config.color;
+
+  const positions = editingPoints.map(
+    ([lat, lon]) => [lat, lon] as LatLngExpression
+  );
+
+  // Calculate midpoints between consecutive vertices
+  const midpoints: { position: [number, number]; afterIndex: number }[] = [];
+  for (let i = 0; i < editingPoints.length; i++) {
+    const next = (i + 1) % editingPoints.length;
+    const [lat1, lon1] = editingPoints[i];
+    const [lat2, lon2] = editingPoints[next];
+    midpoints.push({
+      position: [(lat1 + lat2) / 2, (lon1 + lon2) / 2],
+      afterIndex: i,
+    });
+  }
+
+  const midpointIcon = createMidpointIcon(color);
 
   return (
     <>
-      {/* Saved zones */}
-      {zones.map((zone) => (
-        <ZonePolygon key={zone.id} zone={zone} />
+      {/* Editing polygon preview */}
+      <Polygon
+        positions={positions}
+        interactive={false}
+        pathOptions={{
+          color,
+          fillColor: color,
+          fillOpacity: 0.15,
+          weight: 2,
+          dashArray: "6, 6",
+        }}
+      />
+
+      {/* Draggable vertex markers */}
+      {editingPoints.map(([lat, lon], i) => (
+        <DraggableVertex
+          key={`v-${i}`}
+          position={[lat, lon]}
+          index={i}
+          color={color}
+          onMove={moveEditingPoint}
+          onRemove={removeEditingPoint}
+        />
       ))}
+
+      {/* Midpoint markers — click or drag to insert a new vertex */}
+      {midpoints.map(({ position, afterIndex }) => (
+        <Marker
+          key={`m-${afterIndex}`}
+          position={position}
+          icon={midpointIcon}
+          eventHandlers={{
+            click: () => {
+              addEditingPoint(afterIndex, position[0], position[1]);
+            },
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Main zone layer component — renders all saved zones + drawing preview
+ */
+export function ZoneLayer() {
+  const { zones, editMode, editingZoneId } = useZoneStore();
+
+  return (
+    <>
+      {/* Saved zones (hide the one being edited) */}
+      {zones.map((zone) =>
+        editMode === "edit" && zone.id === editingZoneId ? null : (
+          <ZonePolygon key={zone.id} zone={zone} />
+        )
+      )}
 
       {/* Drawing preview */}
       {editMode === "draw" && <DrawingPreview />}
+
+      {/* Editing overlay */}
+      {editMode === "edit" && <EditingOverlay />}
     </>
   );
 }

@@ -5,6 +5,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+
+# NEXT_PUBLIC_* Variablen werden zur Build-Zeit in den Client-Code eingebettet
+ENV NEXT_PUBLIC_ROSBRIDGE_URL=/rosbridge
+
 RUN npm run build
 
 FROM node:22-alpine AS runner

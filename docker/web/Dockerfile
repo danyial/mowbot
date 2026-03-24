@@ -23,10 +23,11 @@ COPY --from=builder /app/public ./public
 # Custom server mit WebSocket-Proxy (NaN-Sanitization)
 COPY --from=builder /app/server.mjs ./server.mjs
 
-# ws und @next/env werden von server.mjs gebraucht,
-# sind aber nicht im standalone Output enthalten
+# Custom server braucht das vollstaendige next + ws Package
+# (standalone Output enthaelt nur eine abgespeckte Version)
+COPY --from=builder /app/node_modules/next ./node_modules/next
+COPY --from=builder /app/node_modules/@next ./node_modules/@next
 COPY --from=builder /app/node_modules/ws ./node_modules/ws
-COPY --from=builder /app/node_modules/@next/env ./node_modules/@next/env
 
 EXPOSE 3000
 CMD ["node", "server.mjs"]

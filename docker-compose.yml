@@ -83,6 +83,7 @@ services:
       - imu
       - micro-ros-agent
     volumes:
+      - ./config:/config:ro
       - mower-data:/data
     command: >
       python3 /config/mower_nav_launch.py

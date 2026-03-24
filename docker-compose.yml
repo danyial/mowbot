@@ -3,8 +3,6 @@ x-ros-common: &ros-common
   network_mode: host
   environment:
     - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-    - CYCLONEDDS_URI=file:///config/cyclonedds.xml
   volumes:
     - ./config:/config:ro
 

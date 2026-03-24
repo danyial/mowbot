@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { MissionCard } from "./mission-card";
 
 export function MissionList() {
   const { missions, isLoading, fetchMissions } = useMissionStore();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMissions();
@@ -27,9 +28,9 @@ export function MissionList() {
   if (missions.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <p className="text-lg">Keine Aufträge vorhanden</p>
+        <p className="text-lg">Keine Auftraege vorhanden</p>
         <p className="text-sm mt-1">
-          Erstelle einen neuen Mäh-Auftrag um loszulegen.
+          Erstelle einen neuen Maeh-Auftrag um loszulegen.
         </p>
       </div>
     );
@@ -47,7 +48,14 @@ export function MissionList() {
   return (
     <div className="space-y-4">
       {sorted.map((mission) => (
-        <MissionCard key={mission.id} mission={mission} />
+        <MissionCard
+          key={mission.id}
+          mission={mission}
+          expanded={expandedId === mission.id}
+          onToggleExpand={() =>
+            setExpandedId(expandedId === mission.id ? null : mission.id)
+          }
+        />
       ))}
     </div>
   );

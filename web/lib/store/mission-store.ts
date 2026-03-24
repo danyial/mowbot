@@ -12,9 +12,9 @@ interface MissionState {
   fetchMissions: () => Promise<void>;
   createMission: (data: CreateMissionInput) => Promise<void>;
   startMission: (id: string) => void;
-  pauseMission: () => void;
-  resumeMission: () => void;
-  stopMission: () => void;
+  pauseMission: (missionId?: string) => void;
+  resumeMission: (missionId?: string) => void;
+  stopMission: (missionId?: string) => void;
   returnHome: () => void;
   deleteMission: (id: string) => Promise<void>;
   updateProgress: (missionId: string, progress: number, completedPoints: [number, number][]) => void;
@@ -31,8 +31,16 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     try {
       const res = await fetch("/api/missions");
       if (res.ok) {
-        const missions = await res.json();
-        set({ missions, isLoading: false });
+        const missions: Mission[] = await res.json();
+        // Auto-detect active mission after load
+        const active = missions.find(
+          (m) => m.status === "running" || m.status === "paused"
+        );
+        set({
+          missions,
+          isLoading: false,
+          activeMission: active?.id ?? null,
+        });
       } else {
         set({ isLoading: false });
       }
@@ -77,43 +85,58 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     }).catch(() => {});
   },
 
-  pauseMission: () => {
+  pauseMission: (missionId?) => {
+    const id = missionId || get().activeMission;
+    if (!id) return;
     publishMowerCommand({ action: "pause_mission" });
-    const active = get().activeMission;
-    if (active) {
-      set((state) => ({
-        missions: state.missions.map((m) =>
-          m.id === active ? { ...m, status: "paused" as const } : m
-        ),
-      }));
-    }
+    set((state) => ({
+      missions: state.missions.map((m) =>
+        m.id === id ? { ...m, status: "paused" as const } : m
+      ),
+    }));
+    // Persist to server
+    fetch("/api/missions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: "paused" }),
+    }).catch(() => {});
   },
 
-  resumeMission: () => {
+  resumeMission: (missionId?) => {
+    const id = missionId || get().activeMission;
+    if (!id) return;
     publishMowerCommand({ action: "resume_mission" });
-    const active = get().activeMission;
-    if (active) {
-      set((state) => ({
-        missions: state.missions.map((m) =>
-          m.id === active ? { ...m, status: "running" as const } : m
-        ),
-      }));
-    }
+    set((state) => ({
+      missions: state.missions.map((m) =>
+        m.id === id ? { ...m, status: "running" as const } : m
+      ),
+      activeMission: id,
+    }));
+    fetch("/api/missions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: "running" }),
+    }).catch(() => {});
   },
 
-  stopMission: () => {
+  stopMission: (missionId?) => {
+    const id = missionId || get().activeMission;
+    if (!id) return;
     publishMowerCommand({ action: "stop_mission" });
-    const active = get().activeMission;
-    if (active) {
-      set((state) => ({
-        missions: state.missions.map((m) =>
-          m.id === active
-            ? { ...m, status: "aborted" as const, completedAt: new Date().toISOString() }
-            : m
-        ),
-        activeMission: null,
-      }));
-    }
+    const completedAt = new Date().toISOString();
+    set((state) => ({
+      missions: state.missions.map((m) =>
+        m.id === id
+          ? { ...m, status: "aborted" as const, completedAt }
+          : m
+      ),
+      activeMission: null,
+    }));
+    fetch("/api/missions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: "aborted", completedAt }),
+    }).catch(() => {});
   },
 
   returnHome: () => {

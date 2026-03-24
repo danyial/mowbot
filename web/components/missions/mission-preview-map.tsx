@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Polyline, Polygon, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
+import type { LatLngExpression } from "leaflet";
 import L from "leaflet";
 import type { Mission } from "@/lib/types/mission";
 import { useZoneStore } from "@/lib/store/zone-store";
@@ -57,7 +57,7 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
     pathPoints.length > 0 ? pathPoints[0] : [48.2, 16.3];
 
   return (
-    <div className="h-48 w-full rounded-md overflow-hidden border border-border">
+    <div className="h-64 w-full rounded-md overflow-hidden border border-border">
       <MapContainer
         center={defaultCenter}
         zoom={19}

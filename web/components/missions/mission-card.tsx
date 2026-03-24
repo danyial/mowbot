@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
 import {
   Play,
   Pause,
@@ -20,12 +19,17 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { useZoneStore } from "@/lib/store/zone-store";
-import { formatDuration, formatDistance } from "@/lib/utils/formatting";
+import { formatDuration, formatDistance, formatArea } from "@/lib/utils/formatting";
 import { cn } from "@/lib/utils";
 
 const MissionPreviewMap = dynamic(
   () => import("./mission-preview-map"),
-  { ssr: false, loading: () => <div className="h-48 bg-muted animate-pulse rounded-md" /> }
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 bg-muted animate-pulse rounded-md" />
+    ),
+  }
 );
 
 const statusLabels: Record<string, string> = {
@@ -89,14 +93,15 @@ export function MissionCard({
             className="flex items-center gap-2 text-left flex-1 min-w-0"
             onClick={onToggleExpand}
           >
-            <CardTitle className="text-sm truncate">{mission.name}</CardTitle>
-            {onToggleExpand && (
-              expanded ? (
+            <CardTitle className="text-sm truncate">
+              {mission.name}
+            </CardTitle>
+            {onToggleExpand &&
+              (expanded ? (
                 <ChevronUp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               ) : (
                 <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-              )
-            )}
+              ))}
           </button>
           <Badge variant={statusVariant[mission.status]}>
             {statusLabels[mission.status]}
@@ -104,37 +109,14 @@ export function MissionCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Info grid */}
-        <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-          <div>
-            <span className="block font-medium text-foreground">
-              {formatDistance(mission.estimatedDistance)}
-            </span>
-            Strecke
-          </div>
-          <div>
-            <span className="block font-medium text-foreground">
-              {formatDuration(mission.estimatedDuration)}
-            </span>
-            Dauer
-          </div>
-          <div>
-            <span className="block font-medium text-foreground">
-              {mission.perimeterPasses ?? 0} Bahnen
-            </span>
-            Perimeter
-          </div>
-        </div>
-
-        {/* Zone info */}
+        {/* Compact summary */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <MapPin className="h-3 w-3" />
           <span className="truncate">{zoneNames}</span>
-          {mission.angle != null && (
-            <span className="ml-auto flex-shrink-0">
-              {mission.angle}° (+{mission.angleIncrement ?? 0}°)
-            </span>
-          )}
+          <span className="ml-auto flex-shrink-0">
+            {formatDistance(mission.estimatedDistance)} &middot;{" "}
+            {formatDuration(mission.estimatedDuration)}
+          </span>
         </div>
 
         {/* Progress bar for active missions */}
@@ -156,13 +138,74 @@ export function MissionCard({
           </div>
         )}
 
-        {/* Expanded: Map preview */}
-        {expanded && mission.pathPoints.length > 0 && (
-          <MissionPreviewMap mission={mission} />
-        )}
-        {expanded && mission.pathPoints.length === 0 && (
-          <div className="h-24 flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
-            Kein Pfad berechnet
+        {/* Expanded: Horizontal layout — Details left, Map right */}
+        {expanded && (
+          <div className="flex gap-3">
+            {/* Left: Details */}
+            <div className="w-2/5 flex-shrink-0 space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                <div>
+                  <span className="text-muted-foreground">Strecke</span>
+                  <div className="font-medium">
+                    {formatDistance(mission.estimatedDistance)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Dauer</span>
+                  <div className="font-medium">
+                    {formatDuration(mission.estimatedDuration)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Turns</span>
+                  <div className="font-medium">{mission.turns ?? 0}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Perimeter</span>
+                  <div className="font-medium">
+                    {mission.perimeterPasses ?? 0} Bahnen
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Aussenbahn</span>
+                  <div className="font-medium">
+                    {formatArea(mission.perimeterArea ?? 0)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Innen</span>
+                  <div className="font-medium">
+                    {formatArea(mission.innerArea ?? 0)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Winkel</span>
+                  <div className="font-medium">
+                    {mission.angle ?? 0}°
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Versatz</span>
+                  <div className="font-medium">
+                    +{mission.angleIncrement ?? 0}° / Fahrt
+                  </div>
+                </div>
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                {mission.pathPoints?.length ?? 0} Wegpunkte
+              </div>
+            </div>
+
+            {/* Right: Map */}
+            <div className="flex-1 min-w-0">
+              {mission.pathPoints.length > 0 ? (
+                <MissionPreviewMap mission={mission} />
+              ) : (
+                <div className="h-64 flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
+                  Kein Pfad berechnet
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -191,14 +234,14 @@ export function MissionCard({
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={pauseMission}
+                onClick={() => pauseMission(mission.id)}
               >
                 <Pause className="h-3 w-3 mr-1" /> Pause
               </Button>
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={stopMission}
+                onClick={() => stopMission(mission.id)}
               >
                 <Square className="h-3 w-3 mr-1" /> Stop
               </Button>
@@ -214,13 +257,16 @@ export function MissionCard({
 
           {mission.status === "paused" && (
             <>
-              <Button size="sm" onClick={resumeMission}>
+              <Button
+                size="sm"
+                onClick={() => resumeMission(mission.id)}
+              >
                 <RotateCcw className="h-3 w-3 mr-1" /> Fortsetzen
               </Button>
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={stopMission}
+                onClick={() => stopMission(mission.id)}
               >
                 <Square className="h-3 w-3 mr-1" /> Stop
               </Button>

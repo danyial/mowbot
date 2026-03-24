@@ -58,11 +58,11 @@ export function MissionStatus() {
 
           <div className="flex gap-2">
             {active.status === "running" && (
-              <Button size="sm" variant="secondary" onClick={pauseMission}>
+              <Button size="sm" variant="secondary" onClick={() => pauseMission(active.id)}>
                 <Pause className="h-3 w-3 mr-1" /> Pause
               </Button>
             )}
-            <Button size="sm" variant="destructive" onClick={stopMission}>
+            <Button size="sm" variant="destructive" onClick={() => stopMission(active.id)}>
               <Square className="h-3 w-3 mr-1" /> Stop
             </Button>
             <Button size="sm" variant="outline" onClick={returnHome}>

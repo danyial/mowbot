@@ -123,6 +123,9 @@ export async function POST(request: Request) {
       completedPoints: [],
       estimatedDuration: planResult.estimatedDuration,
       estimatedDistance: planResult.estimatedDistance,
+      turns: planResult.turns,
+      perimeterArea: planResult.perimeterArea,
+      innerArea: planResult.innerArea,
     };
 
     missions.push(mission);

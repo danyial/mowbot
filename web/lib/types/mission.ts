@@ -25,6 +25,9 @@ export interface Mission {
   completedPoints: [number, number][]; // already driven
   estimatedDuration: number; // seconds
   estimatedDistance: number; // meters
+  turns: number; // number of direction changes (stripes - 1)
+  perimeterArea: number; // m² covered by perimeter passes
+  innerArea: number; // m² covered by inner stripes
 }
 
 export interface CreateMissionInput {
@@ -43,4 +46,7 @@ export interface PlanResult {
   pathPoints: [number, number][];
   estimatedDistance: number; // meters
   estimatedDuration: number; // seconds
+  turns: number; // number of direction changes
+  perimeterArea: number; // m² covered by perimeter passes
+  innerArea: number; // m² covered by inner stripes
 }

@@ -43,14 +43,15 @@ export function generateMowPath(params: {
     speed,
   } = params;
 
-  if (zonePolygons.length === 0) {
-    return { pathPoints: [], estimatedDistance: 0, estimatedDuration: 0 };
-  }
+  const emptyResult: PlanResult = {
+    pathPoints: [], estimatedDistance: 0, estimatedDuration: 0,
+    turns: 0, perimeterArea: 0, innerArea: 0,
+  };
+
+  if (zonePolygons.length === 0) return emptyResult;
 
   const effectiveSpacing = spacing * (1 - overlap);
-  if (effectiveSpacing <= 0) {
-    return { pathPoints: [], estimatedDistance: 0, estimatedDuration: 0 };
-  }
+  if (effectiveSpacing <= 0) return emptyResult;
 
   // 1. Build the mow area: union all zone polygons
   let mowArea: Feature<Polygon | MultiPolygon> = turf.polygon(zonePolygons[0]);
@@ -76,9 +77,10 @@ export function generateMowPath(params: {
   }
 
   const allPoints: [number, number][] = [];
+  const totalArea = turf.area(mowArea); // m²
 
   // 3. Generate perimeter passes
-  let innerArea = mowArea;
+  let innerAreaFeature = mowArea;
   for (let p = 0; p < perimeterPasses; p++) {
     const offsetMeters = effectiveSpacing * (p + 0.5); // Half-spacing for first pass, then full increments
     const buffered = turf.buffer(mowArea, -offsetMeters / 1000, { units: "kilometers" });
@@ -89,7 +91,7 @@ export function generateMowPath(params: {
     allPoints.push(...perimeterPoints);
 
     // The inner area is the last valid buffer
-    innerArea = buffered as Feature<Polygon | MultiPolygon>;
+    innerAreaFeature = buffered as Feature<Polygon | MultiPolygon>;
   }
 
   // If we had perimeter passes, shrink the inner area one more time
@@ -97,18 +99,28 @@ export function generateMowPath(params: {
     const innerOffset = effectiveSpacing * perimeterPasses;
     const shrunk = turf.buffer(mowArea, -innerOffset / 1000, { units: "kilometers" });
     if (shrunk && turf.area(shrunk) > 0.01) {
-      innerArea = shrunk as Feature<Polygon | MultiPolygon>;
+      innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
       // Entire area covered by perimeter passes
-      return buildResult(allPoints, speed);
+      const innerAreaSqm = 0;
+      const perimeterAreaSqm = totalArea;
+      return buildResult(allPoints, speed, 0, perimeterAreaSqm, innerAreaSqm);
     }
   }
 
+  // Calculate areas
+  const innerAreaSqm = turf.area(innerAreaFeature);
+  const perimeterAreaSqm = Math.max(0, totalArea - innerAreaSqm);
+
   // 4. Generate parallel stripes over the inner area
-  const stripePoints = generateParallelStripes(innerArea, effectiveSpacing, angle);
+  const { points: stripePoints, stripeCount } = generateParallelStripes(
+    innerAreaFeature, effectiveSpacing, angle
+  );
   allPoints.push(...stripePoints);
 
-  return buildResult(allPoints, speed);
+  const turns = Math.max(0, stripeCount - 1);
+
+  return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm);
 }
 
 /**
@@ -141,7 +153,7 @@ function generateParallelStripes(
   area: Feature<Polygon | MultiPolygon>,
   spacing: number, // meters
   angleDeg: number
-): [number, number][] {
+): { points: [number, number][]; stripeCount: number } {
   // Get the bounding box and centroid for rotation
   const bbox = turf.bbox(area);
   const centroid = turf.centroid(area);
@@ -239,7 +251,7 @@ function generateParallelStripes(
     }
   }
 
-  return result;
+  return { points: result, stripeCount: stripes.length };
 }
 
 /**
@@ -261,11 +273,14 @@ function findLinePolygonIntersections(
 }
 
 /**
- * Build the final PlanResult from waypoints + speed.
+ * Build the final PlanResult from waypoints + speed + area stats.
  */
 function buildResult(
   points: [number, number][],
-  speed: number
+  speed: number,
+  turns: number = 0,
+  perimeterArea: number = 0,
+  innerArea: number = 0,
 ): PlanResult {
   let distance = 0;
   for (let i = 1; i < points.length; i++) {
@@ -282,5 +297,8 @@ function buildResult(
     pathPoints: points,
     estimatedDistance: Math.round(distance),
     estimatedDuration: Math.round(duration),
+    turns,
+    perimeterArea: Math.round(perimeterArea),
+    innerArea: Math.round(innerArea),
   };
 }

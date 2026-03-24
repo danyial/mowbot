@@ -5,15 +5,12 @@
   <Domain>
     <General>
       <Interfaces>
-        <NetworkInterface autodetermine="true"/>
+        <NetworkInterface name="wlan0" priority="default" multicast="true"/>
       </Interfaces>
       <AllowMulticast>true</AllowMulticast>
     </General>
     <Internal>
       <SocketReceiveBufferSize min="10MB"/>
     </Internal>
-    <SharedMemory>
-      <Enable>false</Enable>
-    </SharedMemory>
   </Domain>
 </CycloneDDS>

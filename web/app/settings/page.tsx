@@ -548,7 +548,7 @@ export default function SettingsPage() {
               }
             />
             <p className="text-[10px] text-muted-foreground">
-              Abstand des Roboter-Mittelpunkts zu Gartengrenze und Ausschlusszonen
+              Abstand der Roboter-Kante zu Gartengrenze und Ausschlusszonen
             </p>
           </div>
 

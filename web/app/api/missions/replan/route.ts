@@ -22,16 +22,19 @@ async function writeMissions(missions: Mission[]) {
   await fs.writeFile(DATA_FILE, JSON.stringify(missions, null, 2), "utf-8");
 }
 
-async function readEdgeClearance(): Promise<number> {
+async function readRobotConfig(): Promise<{ edgeClearance: number; robotWidth: number }> {
   try {
     const data = await fs.readFile(CONFIG_FILE, "utf-8");
     const config = JSON.parse(data);
-    const cm = config?.robot?.edgeClearance;
-    if (typeof cm === "number" && cm >= 0) return cm / 100;
+    const ec = config?.robot?.edgeClearance;
+    const rw = config?.robot?.robotWidth;
+    return {
+      edgeClearance: (typeof ec === "number" && ec >= 0) ? ec / 100 : 0.1,
+      robotWidth: (typeof rw === "number" && rw > 0) ? rw / 100 : 0.35,
+    };
   } catch {
-    // fallback
+    return { edgeClearance: 0.1, robotWidth: 0.35 };
   }
-  return 0.1;
 }
 
 async function readZones(): Promise<ZoneCollection> {
@@ -108,8 +111,10 @@ export async function POST(request: Request) {
       .map((z) => z.geometry.coordinates as number[][][]);
 
     // Re-generate path with new angle, using existing startPoint
-    // Use edgeClearance from mission (if saved) or from current config
-    const edgeClearance = mission.edgeClearance ?? (await readEdgeClearance());
+    // Use edgeClearance/robotWidth from mission (if saved) or from current config
+    const configDefaults = await readRobotConfig();
+    const edgeClearance = mission.edgeClearance ?? configDefaults.edgeClearance;
+    const robotWidth = mission.robotWidth ?? configDefaults.robotWidth;
     const planResult = generateMowPath({
       zonePolygons: mowPolygons,
       exclusionPolygons,
@@ -120,6 +125,7 @@ export async function POST(request: Request) {
       speed: mission.speed,
       startPoint: mission.startPoint,
       edgeClearance,
+      robotWidth,
     });
 
     // Update mission

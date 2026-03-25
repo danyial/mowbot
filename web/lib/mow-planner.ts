@@ -229,8 +229,10 @@ export function generateMowPath(params: {
   angle: number;
   speed: number;
   startPoint?: [number, number];
-  /** Minimum clearance from boundaries in meters. Defaults to spacing/2. */
+  /** Minimum clearance of robot EDGE from boundaries in meters. */
   edgeClearance?: number;
+  /** Robot width in meters — used to calculate center-to-edge offset. */
+  robotWidth?: number;
 }): PlanResult {
   const {
     zonePolygons,
@@ -257,7 +259,11 @@ export function generateMowPath(params: {
   const effectiveSpacing = spacing * (1 - overlap);
   if (effectiveSpacing <= 0) return emptyResult;
 
-  const safetyMargin = params.edgeClearance ?? spacing / 2;
+  // safetyMargin = distance from boundary to robot CENTER
+  // = edgeClearance (edge-to-boundary) + robotWidth/2 (center-to-edge)
+  const edgeClearance = params.edgeClearance ?? 0.1;
+  const robotHalfWidth = (params.robotWidth ?? 0.35) / 2;
+  const safetyMargin = edgeClearance + robotHalfWidth;
 
   // 1. Build the mow area: union all zone polygons
   let mowArea: Feature<Polygon | MultiPolygon> = turf.polygon(zonePolygons[0]);
@@ -357,7 +363,7 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
-      const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea);
+      const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, mowArea);
       return buildResult(allPoints, speed, 0, totalArea, 0);
     }
   }
@@ -366,6 +372,9 @@ export function generateMowPath(params: {
   const perimeterAreaSqm = Math.max(0, totalArea - innerAreaSqm);
 
   // 5. Generate parallel stripes with safe connections between them
+  //    checkArea = mowArea (for isDirectPathInside — full mow polygon)
+  //    routeArea = innerAreaFeature (for findBestPerimeterPath — routes along
+  //    innermost perimeter rings, keeping same clearance as perimeter passes)
   const lastPoint =
     mowPoints.length > 0 ? mowPoints[mowPoints.length - 1] : undefined;
 
@@ -373,7 +382,8 @@ export function generateMowPath(params: {
     innerAreaFeature,
     effectiveSpacing,
     angle,
-    mowArea,
+    mowArea,          // checkArea: is direct path inside?
+    innerAreaFeature,  // routeArea: route along these rings
     lastPoint
   );
   mowPoints.push(...stripePoints);
@@ -381,7 +391,8 @@ export function generateMowPath(params: {
   const turns = Math.max(0, stripeCount - 1);
 
   // 6. Add start/return path from dock or GPS position
-  const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea);
+  //    Route via innerAreaFeature rings for consistent clearance
+  const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, innerAreaFeature);
 
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm);
 }
@@ -393,12 +404,16 @@ export function generateMowPath(params: {
 /**
  * Prepend a path from startPoint to the first mow point, and append
  * a return path from the last mow point back to startPoint.
- * Uses findBestPerimeterPath which considers all rings (outer + holes).
+ *
+ * @param checkArea Polygon for isDirectPathInside (full mow area)
+ * @param routeArea Polygon whose rings are used for perimeter routing
+ *                  (innerAreaFeature — keeps same clearance as perimeter passes)
  */
 function addStartReturnPaths(
   startPoint: [number, number] | undefined,
   mowPoints: [number, number][],
-  safeArea: Feature<Polygon | MultiPolygon>
+  checkArea: Feature<Polygon | MultiPolygon>,
+  routeArea: Feature<Polygon | MultiPolygon>
 ): [number, number][] {
   if (!startPoint || mowPoints.length === 0) return mowPoints;
 
@@ -407,8 +422,8 @@ function addStartReturnPaths(
   // Start: startPoint → first mow point
   result.push(startPoint);
   const firstMow = mowPoints[0];
-  if (!isDirectPathInside(startPoint, firstMow, safeArea)) {
-    const waypoints = findBestPerimeterPath(startPoint, firstMow, safeArea);
+  if (!isDirectPathInside(startPoint, firstMow, checkArea)) {
+    const waypoints = findBestPerimeterPath(startPoint, firstMow, routeArea);
     result.push(...waypoints);
   }
 
@@ -417,8 +432,8 @@ function addStartReturnPaths(
 
   // Return: last mow point → startPoint
   const lastMow = mowPoints[mowPoints.length - 1];
-  if (!isDirectPathInside(lastMow, startPoint, safeArea)) {
-    const waypoints = findBestPerimeterPath(lastMow, startPoint, safeArea);
+  if (!isDirectPathInside(lastMow, startPoint, checkArea)) {
+    const waypoints = findBestPerimeterPath(lastMow, startPoint, routeArea);
     result.push(...waypoints);
   }
   result.push(startPoint);
@@ -432,11 +447,16 @@ function addStartReturnPaths(
  * stripes that would cross outside the polygon are routed along the
  * best polygon ring (outer or hole).
  */
+/**
+ * @param checkArea Polygon for isDirectPathInside (full mow area)
+ * @param routeArea Polygon whose rings are used for perimeter routing
+ */
 function generateParallelStripes(
   area: Feature<Polygon | MultiPolygon>,
   spacing: number,
   angleDeg: number,
-  safeArea: Feature<Polygon | MultiPolygon>,
+  checkArea: Feature<Polygon | MultiPolygon>,
+  routeArea: Feature<Polygon | MultiPolygon>,
   startFrom?: [number, number]
 ): { points: [number, number][]; stripeCount: number } {
   const centroid = turf.centroid(area);
@@ -552,11 +572,11 @@ function generateParallelStripes(
     // Safe connection: route via best ring if direct path is outside
     if (currentPos !== null) {
       const target = stripe[0];
-      if (!isDirectPathInside(currentPos, target, safeArea)) {
+      if (!isDirectPathInside(currentPos, target, checkArea)) {
         const perimeterWaypoints = findBestPerimeterPath(
           currentPos,
           target,
-          safeArea
+          routeArea
         );
         result.push(...perimeterWaypoints);
       }

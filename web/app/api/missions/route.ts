@@ -22,16 +22,19 @@ async function writeMissions(missions: Mission[]) {
   await fs.writeFile(DATA_FILE, JSON.stringify(missions, null, 2), "utf-8");
 }
 
-async function readEdgeClearance(): Promise<number> {
+async function readRobotConfig(): Promise<{ edgeClearance: number; robotWidth: number }> {
   try {
     const data = await fs.readFile(CONFIG_FILE, "utf-8");
     const config = JSON.parse(data);
-    const cm = config?.robot?.edgeClearance;
-    if (typeof cm === "number" && cm >= 0) return cm / 100; // cm → meters
+    const ec = config?.robot?.edgeClearance;
+    const rw = config?.robot?.robotWidth;
+    return {
+      edgeClearance: (typeof ec === "number" && ec >= 0) ? ec / 100 : 0.1, // cm → m
+      robotWidth: (typeof rw === "number" && rw > 0) ? rw / 100 : 0.35,   // cm → m
+    };
   } catch {
-    // fallback
+    return { edgeClearance: 0.1, robotWidth: 0.35 };
   }
-  return 0.1; // default 10cm = 0.1m
 }
 
 async function readZones(): Promise<ZoneCollection> {
@@ -90,7 +93,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const missions = await readMissions();
     const zones = await readZones();
-    const edgeClearance = await readEdgeClearance();
+    const { edgeClearance, robotWidth } = await readRobotConfig();
 
     const zoneIds: string[] = body.zoneIds || ["all"];
     const spacing = body.spacing ?? 0.2;
@@ -115,6 +118,7 @@ export async function POST(request: Request) {
       speed,
       startPoint,
       edgeClearance,
+      robotWidth,
     });
 
     const mission: Mission = {
@@ -142,6 +146,7 @@ export async function POST(request: Request) {
       innerArea: planResult.innerArea,
       startPoint,
       edgeClearance,
+      robotWidth,
     };
 
     missions.push(mission);

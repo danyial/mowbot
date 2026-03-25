@@ -29,7 +29,8 @@ export interface Mission {
   perimeterArea: number; // m² covered by perimeter passes
   innerArea: number; // m² covered by inner stripes
   startPoint?: [number, number]; // [lat, lon] — dock or GPS start/end position
-  edgeClearance?: number; // meters — minimum clearance from boundaries
+  edgeClearance?: number; // meters — minimum clearance of robot edge from boundaries
+  robotWidth?: number; // meters — robot width for center-to-edge offset
 }
 
 export interface CreateMissionInput {

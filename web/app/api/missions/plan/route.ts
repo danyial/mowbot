@@ -7,16 +7,19 @@ import { generateMowPath } from "@/lib/mow-planner";
 const ZONES_FILE = path.join(process.cwd(), "data", "zones.json");
 const CONFIG_FILE = path.join(process.cwd(), "data", "config.json");
 
-async function readEdgeClearance(): Promise<number> {
+async function readRobotConfig(): Promise<{ edgeClearance: number; robotWidth: number }> {
   try {
     const data = await fs.readFile(CONFIG_FILE, "utf-8");
     const config = JSON.parse(data);
-    const cm = config?.robot?.edgeClearance;
-    if (typeof cm === "number" && cm >= 0) return cm / 100;
+    const ec = config?.robot?.edgeClearance;
+    const rw = config?.robot?.robotWidth;
+    return {
+      edgeClearance: (typeof ec === "number" && ec >= 0) ? ec / 100 : 0.1,
+      robotWidth: (typeof rw === "number" && rw > 0) ? rw / 100 : 0.35,
+    };
   } catch {
-    // fallback
+    return { edgeClearance: 0.1, robotWidth: 0.35 };
   }
-  return 0.1;
 }
 
 async function readZones(): Promise<ZoneCollection> {
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const zones = await readZones();
-    const edgeClearance = await readEdgeClearance();
+    const { edgeClearance, robotWidth } = await readRobotConfig();
 
     const zoneIds: string[] = body.zoneIds || ["all"];
     const spacing = body.spacing ?? 0.2;
@@ -81,6 +84,7 @@ export async function POST(request: Request) {
       speed,
       startPoint,
       edgeClearance,
+      robotWidth,
     });
 
     return NextResponse.json(result);

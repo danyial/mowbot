@@ -22,6 +22,7 @@ interface Config {
     maxLinearSpeed: number;
     maxAngularSpeed: number;
     mowWidth: number;
+    edgeClearance: number; // Mindestabstand zu Grenzen in cm
   };
   navigation: {
     ntripServer: string;
@@ -49,7 +50,7 @@ interface Config {
 
 const defaultConfig: Config = {
   connection: { rosbridgeUrl: "ws://mower.local:9090", reconnectInterval: 1000 },
-  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2 },
+  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2, edgeClearance: 10 },
   navigation: { ntripServer: "", ntripMountpoint: "", ntripUsername: "", ntripPassword: "", magneticDeclination: 2.5 },
   map: { address: "", defaultLat: 48.1634, defaultLon: 11.3019, defaultZoom: 18, tileServerUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" },
   safety: { tiltThreshold: 15, cmdVelTimeout: 500, geofencingEnabled: true, imuRollOffset: 0, imuPitchOffset: 0, imuSmoothing: 0.15 },
@@ -369,6 +370,21 @@ export default function SettingsPage() {
                 updateConfig("robot", "maxAngularSpeed", v / 100)
               }
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Mindestabstand zu Grenzen: {config.robot.edgeClearance} cm</Label>
+            <Slider
+              min={0}
+              max={30}
+              step={1}
+              value={[config.robot.edgeClearance]}
+              onValueChange={([v]) =>
+                updateConfig("robot", "edgeClearance", v)
+              }
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Abstand des Roboter-Mittelpunkts zu Gartengrenze und Ausschlusszonen
+            </p>
           </div>
         </CardContent>
       </Card>

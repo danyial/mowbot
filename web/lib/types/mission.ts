@@ -29,6 +29,7 @@ export interface Mission {
   perimeterArea: number; // m² covered by perimeter passes
   innerArea: number; // m² covered by inner stripes
   startPoint?: [number, number]; // [lat, lon] — dock or GPS start/end position
+  edgeClearance?: number; // meters — minimum clearance from boundaries
 }
 
 export interface CreateMissionInput {

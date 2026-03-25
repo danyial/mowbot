@@ -229,6 +229,8 @@ export function generateMowPath(params: {
   angle: number;
   speed: number;
   startPoint?: [number, number];
+  /** Minimum clearance from boundaries in meters. Defaults to spacing/2. */
+  edgeClearance?: number;
 }): PlanResult {
   const {
     zonePolygons,
@@ -255,7 +257,7 @@ export function generateMowPath(params: {
   const effectiveSpacing = spacing * (1 - overlap);
   if (effectiveSpacing <= 0) return emptyResult;
 
-  const safetyMargin = spacing / 2;
+  const safetyMargin = params.edgeClearance ?? spacing / 2;
 
   // 1. Build the mow area: union all zone polygons
   let mowArea: Feature<Polygon | MultiPolygon> = turf.polygon(zonePolygons[0]);

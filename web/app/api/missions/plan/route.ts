@@ -5,6 +5,19 @@ import type { ZoneCollection } from "@/lib/types/zones";
 import { generateMowPath } from "@/lib/mow-planner";
 
 const ZONES_FILE = path.join(process.cwd(), "data", "zones.json");
+const CONFIG_FILE = path.join(process.cwd(), "data", "config.json");
+
+async function readEdgeClearance(): Promise<number> {
+  try {
+    const data = await fs.readFile(CONFIG_FILE, "utf-8");
+    const config = JSON.parse(data);
+    const cm = config?.robot?.edgeClearance;
+    if (typeof cm === "number" && cm >= 0) return cm / 100;
+  } catch {
+    // fallback
+  }
+  return 0.1;
+}
 
 async function readZones(): Promise<ZoneCollection> {
   try {
@@ -24,6 +37,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const zones = await readZones();
+    const edgeClearance = await readEdgeClearance();
 
     const zoneIds: string[] = body.zoneIds || ["all"];
     const spacing = body.spacing ?? 0.2;
@@ -66,6 +80,7 @@ export async function POST(request: Request) {
       angle,
       speed,
       startPoint,
+      edgeClearance,
     });
 
     return NextResponse.json(result);

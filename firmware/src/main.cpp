@@ -43,8 +43,6 @@ rcl_node_t node;
 unsigned long last_cmd_time = 0;
 #define CMD_TIMEOUT_MS 500
 
-// Agent-Ping: nur im WAITING_AGENT State verwendet
-
 // micro-ROS Verbindungsstatus
 enum AgentState { WAITING_AGENT, AGENT_AVAILABLE, AGENT_CONNECTED, AGENT_DISCONNECTED };
 AgentState agent_state = WAITING_AGENT;
@@ -52,6 +50,9 @@ AgentState agent_state = WAITING_AGENT;
 // LED-Blink Status
 unsigned long last_led_toggle = 0;
 bool led_on = false;
+
+// Zähler für empfangene cmd_vel Nachrichten (Diagnose)
+volatile unsigned long cmd_vel_count = 0;
 
 // µs → PWM Duty Cycle (16-bit bei 50 Hz)
 uint32_t us_to_duty(int microseconds) {
@@ -87,9 +88,7 @@ void cmd_vel_callback(const void* msgin) {
   set_esc(ESC_RIGHT, scale_right);
 
   last_cmd_time = millis();
-
-  // LED an wenn cmd_vel empfangen wird (Motoren aktiv)
-  digitalWrite(LED_PIN, HIGH);
+  cmd_vel_count++;
 }
 
 bool create_microros_entities() {
@@ -133,7 +132,7 @@ void blink_led(unsigned long interval_ms) {
 void setup() {
   // Debug-LED
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  digitalWrite(LED_PIN, HIGH);  // LED an beim Start
 
   Serial.begin(115200);
 
@@ -149,10 +148,38 @@ void setup() {
   #endif
 
   // ESCs auf Neutral (1500µs) — 3 Sekunden warten für ESC-Initialisierung
-  // ESCs brauchen das Neutral-Signal beim Einschalten zur Kalibrierung
   set_esc(ESC_LEFT, 0.0f);
   set_esc(ESC_RIGHT, 0.0f);
   delay(3000);
+
+  // ============================================================
+  // DIAGNOSE: Kurzer Motor-Impuls um ESC+PWM Funktion zu testen
+  // ENTFERNEN wenn Motoren funktionieren!
+  // ============================================================
+  // LED aus → Impuls startet
+  digitalWrite(LED_PIN, LOW);
+  delay(200);
+
+  // 10% vorwärts für 500ms
+  set_esc(ESC_LEFT, 0.1f);
+  set_esc(ESC_RIGHT, 0.1f);
+  digitalWrite(LED_PIN, HIGH);  // LED an während Impuls
+  delay(500);
+
+  // Stop
+  set_esc(ESC_LEFT, 0.0f);
+  set_esc(ESC_RIGHT, 0.0f);
+  digitalWrite(LED_PIN, LOW);
+  delay(500);
+
+  // 3x schnelles LED-Blinken = Setup fertig
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(100);
+    digitalWrite(LED_PIN, LOW);
+    delay(100);
+  }
+  // ============================================================
 
   // micro-ROS Transport (Serial)
   set_microros_serial_transports(Serial);
@@ -176,8 +203,8 @@ void loop() {
       // Agent gefunden, Entities erstellen
       if (create_microros_entities()) {
         last_cmd_time = millis();
+        cmd_vel_count = 0;
         agent_state = AGENT_CONNECTED;
-        // Schnelles Blinken = verbunden
         digitalWrite(LED_PIN, LOW);
       } else {
         agent_state = WAITING_AGENT;
@@ -185,16 +212,19 @@ void loop() {
       break;
 
     case AGENT_CONNECTED: {
-      // LED: schnelles Blinken wenn idle, Dauer-an wird in cmd_vel_callback gesetzt
-      if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {
-        blink_led(250);
+      // LED blinkt IMMER im Connected-State (Beweis dass Loop läuft)
+      // Geschwindigkeit zeigt Status an:
+      //   500ms = verbunden, kein cmd_vel
+      //   100ms = cmd_vel wird empfangen
+      if (millis() - last_cmd_time <= CMD_TIMEOUT_MS) {
+        blink_led(100);   // Schnell = empfängt cmd_vel
+      } else {
+        blink_led(500);   // Mittel = verbunden, idle
       }
 
-      // KEIN Ping im Connected-State! Der Ping blockiert den Serial-Port
-      // für bis zu 300ms und verhindert das Empfangen von cmd_vel Nachrichten.
-      // Sicherheit ist trotzdem gewährleistet: der Watchdog (CMD_TIMEOUT_MS)
-      // stoppt die Motoren nach 500ms ohne cmd_vel.
-      rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+      // Executor verarbeitet eingehende Nachrichten
+      // 10ms Spin-Time damit der Loop schnell durchläuft
+      rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
 
       // Safety: Stoppe Motoren wenn kein cmd_vel seit CMD_TIMEOUT_MS
       if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {
@@ -210,7 +240,6 @@ void loop() {
       set_esc(ESC_RIGHT, 0.0f);
       destroy_microros_entities();
       agent_state = WAITING_AGENT;
-      // LED aus
       digitalWrite(LED_PIN, LOW);
       break;
   }

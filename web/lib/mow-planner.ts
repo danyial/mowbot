@@ -9,7 +9,7 @@
  *    then hole ring passes (all passes per hole) separately
  * 5. Generate parallel stripes at the given angle over the remaining inner area
  * 6. Sort stripes by nearest-neighbor for shortest travel between stripes
- * 7. Connect stripes via best polygon ring when direct path crosses boundary
+ * 7. Connect stripes via safeRoute() — projects onto polygon edges for safe routing
  * 8. Add start/return path from dock or GPS position
  * 9. Return waypoints + distance estimate + area stats
  */
@@ -84,120 +84,144 @@ function ringToWaypoints(ring: number[][]): [number, number][] {
   return ring.map(([lon, lat]) => [lat, lon] as [number, number]);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Safe routing — project onto polygon EDGES, not just vertices
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Find the index of the nearest point on a ring to the given [lat, lon] point.
+ * Project a [lat, lon] point onto the nearest EDGE of a ring [[lon, lat], ...].
+ * Returns the projected point as [lat, lon] and the index of the edge's
+ * start vertex. This ensures the connection from the original point to
+ * the projected point is a short perpendicular segment that stays inside
+ * the polygon (unlike jumping to the nearest vertex which may be around
+ * a concave corner).
  */
-function findNearestRingIndex(
+function projectPointOntoRing(
   point: [number, number],
   ring: number[][]
-): number {
+): { projected: [number, number]; edgeStartIdx: number } {
   const [lat, lon] = point;
-  let bestIdx = 0;
+  const n = ring.length - 1; // exclude closing point (same as first)
+  if (n <= 0) return { projected: point, edgeStartIdx: 0 };
+
   let bestDist = Infinity;
-  for (let i = 0; i < ring.length; i++) {
-    const d = geoDistSq([lon, lat], ring[i]);
-    if (d < bestDist) {
-      bestDist = d;
-      bestIdx = i;
+  let bestProjected: [number, number] = point;
+  let bestEdgeIdx = 0;
+
+  for (let i = 0; i < n; i++) {
+    const ax = ring[i][0],
+      ay = ring[i][1]; // [lon, lat]
+    const j = (i + 1) % n;
+    const bx = ring[j][0],
+      by = ring[j][1];
+
+    // Project point [lon, lat] onto segment A→B
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-20) continue;
+
+    let t = ((lon - ax) * dx + (lat - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const px = ax + t * dx;
+    const py = ay + t * dy;
+    const dist = (lon - px) * (lon - px) + (lat - py) * (lat - py);
+
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestProjected = [py, px]; // [lat, lon]
+      bestEdgeIdx = i;
     }
   }
-  return bestIdx;
+
+  return { projected: bestProjected, edgeStartIdx: bestEdgeIdx };
 }
 
 /**
- * Extract a slice of ring points from index `from` to index `to`,
- * walking forward (wrapping around). Excludes closing point.
+ * Route safely from A to B within the polygon.
+ *
+ * 1. If a direct line A→B stays inside the polygon → returns [].
+ * 2. Otherwise, for each ring of routeArea:
+ *    - Projects A and B onto the nearest EDGE of that ring
+ *    - Builds two candidate paths around the ring (forward + backward)
+ *    - Each candidate: projectedA → ring vertices → projectedB
+ * 3. Picks the shortest overall path across all rings and directions.
+ *
+ * Returns intermediate waypoints to insert between A and B.
+ * Does NOT include A or B themselves in the result.
  */
-function ringSliceForward(
-  ring: number[][],
-  from: number,
-  to: number
-): number[][] {
-  const n = ring.length - 1; // exclude closing point (same as first)
-  if (n <= 0) return [];
-  const result: number[][] = [];
-  let i = from % n;
-  const target = to % n;
-  while (i !== target) {
-    result.push(ring[i]);
-    i = (i + 1) % n;
-  }
-  result.push(ring[target]);
-  return result;
-}
-
-/** Total distance of a path of [lon, lat] coords */
-function pathLengthGeo(coords: number[][]): number {
-  let len = 0;
-  for (let i = 1; i < coords.length; i++) {
-    len += Math.sqrt(geoDistSq(coords[i - 1], coords[i]));
-  }
-  return len;
-}
-
-/**
- * Find the shortest path along a single ring from point A to point B.
- * Returns the full ring path as [lat, lon] waypoints INCLUDING the nearest
- * ring points to A and B. This ensures the path stays on the polygon
- * boundary — the caller connects from A to the first ring point and
- * from the last ring point to B (short, safe connections).
- */
-function findPerimeterPathOnRing(
+function safeRoute(
   from: [number, number],
   to: [number, number],
-  ring: number[][]
+  checkArea: Feature<Polygon | MultiPolygon>,
+  routeArea: Feature<Polygon | MultiPolygon>
 ): [number, number][] {
-  const fromIdx = findNearestRingIndex(from, ring);
-  const toIdx = findNearestRingIndex(to, ring);
-
-  if (fromIdx === toIdx) {
-    // Same ring point — just return that point
-    const [lon, lat] = ring[fromIdx];
-    return [[lat, lon]];
+  // Direct path is fine — no routing needed
+  if (isDirectPathInside(from, to, checkArea)) {
+    return [];
   }
 
-  const pathForward = ringSliceForward(ring, fromIdx, toIdx);
-  const pathBackward = ringSliceForward(ring, toIdx, fromIdx).reverse();
-
-  const shorter =
-    pathLengthGeo(pathForward) <= pathLengthGeo(pathBackward)
-      ? pathForward
-      : pathBackward;
-
-  // Return ALL ring points (including start and end ring points)
-  // so the path stays fully on the polygon boundary
-  return shorter.map(([lon, lat]) => [lat, lon] as [number, number]);
-}
-
-/**
- * Find the best (shortest) perimeter path from A to B, trying all rings
- * of the polygon (outer + holes). This ensures the path routes around
- * exclusion zones when needed, instead of always using the outer ring.
- */
-function findBestPerimeterPath(
-  from: [number, number],
-  to: [number, number],
-  safeArea: Feature<Polygon | MultiPolygon>
-): [number, number][] {
-  const allRings = getAllRings(safeArea);
+  const allRings = getAllRings(routeArea);
+  if (allRings.length === 0) return [];
 
   let bestPath: [number, number][] = [];
   let bestLength = Infinity;
 
   for (const ring of allRings) {
-    if (ring.length < 3) continue;
-    const path = findPerimeterPathOnRing(from, to, ring);
-    // Calculate total length including start→first and last→end
-    const fullPath: [number, number][] = [from, ...path, to];
-    let len = 0;
-    for (let i = 1; i < fullPath.length; i++) {
-      const dLat = fullPath[i][0] - fullPath[i - 1][0];
-      const dLon = fullPath[i][1] - fullPath[i - 1][1];
-      len += Math.sqrt(dLat * dLat + dLon * dLon);
+    const n = ring.length - 1; // exclude closing point
+    if (n < 3) continue;
+
+    // Project both endpoints onto this ring's nearest EDGE
+    const fromProj = projectPointOntoRing(from, ring);
+    const toProj = projectPointOntoRing(to, ring);
+
+    const fromEdge = fromProj.edgeStartIdx;
+    const toEdge = toProj.edgeStartIdx;
+
+    // Build two candidate paths around the ring between the projections
+    // Forward: fromProj → walk vertices forward → toProj
+    const fwdPath: [number, number][] = [fromProj.projected];
+    {
+      // Start from vertex AFTER fromEdge, walk to vertex AFTER toEdge
+      let v = (fromEdge + 1) % n;
+      const stopV = (toEdge + 1) % n;
+      let steps = 0;
+      while (v !== stopV && steps <= n) {
+        fwdPath.push([ring[v][1], ring[v][0]]); // [lat, lon]
+        v = (v + 1) % n;
+        steps++;
+      }
+      fwdPath.push(toProj.projected);
     }
-    if (len < bestLength) {
-      bestLength = len;
-      bestPath = path;
+
+    // Backward: fromProj → walk vertices backward → toProj
+    const bwdPath: [number, number][] = [fromProj.projected];
+    {
+      let v = fromEdge % n;
+      const stopV = toEdge % n;
+      let steps = 0;
+      while (v !== stopV && steps <= n) {
+        bwdPath.push([ring[v][1], ring[v][0]]); // [lat, lon]
+        v = (v - 1 + n) % n;
+        steps++;
+      }
+      bwdPath.push(toProj.projected);
+    }
+
+    // Evaluate both candidates (total path including from→candidate→to)
+    for (const candidate of [fwdPath, bwdPath]) {
+      const fullPath: [number, number][] = [from, ...candidate, to];
+      let len = 0;
+      for (let i = 1; i < fullPath.length; i++) {
+        const dLat = fullPath[i][0] - fullPath[i - 1][0];
+        const dLon = fullPath[i][1] - fullPath[i - 1][1];
+        len += Math.sqrt(dLat * dLat + dLon * dLon);
+      }
+      if (len < bestLength) {
+        bestLength = len;
+        bestPath = candidate;
+      }
     }
   }
 
@@ -221,6 +245,29 @@ function isDirectPathInside(
   } catch {
     return false;
   }
+}
+
+/**
+ * Connect a sequence of ring waypoint arrays with safe routing between them.
+ * Used for perimeter pass rings that may come from separate polygons
+ * (MultiPolygon buffers) and need validated connections.
+ */
+function connectRingsWithSafeRoute(
+  rings: [number, number][][],
+  routeArea: Feature<Polygon | MultiPolygon>
+): [number, number][] {
+  if (rings.length === 0) return [];
+  const result: [number, number][] = [...rings[0]];
+
+  for (let i = 1; i < rings.length; i++) {
+    const from = result[result.length - 1];
+    const to = rings[i][0];
+    const waypoints = safeRoute(from, to, routeArea, routeArea);
+    result.push(...waypoints);
+    result.push(...rings[i]);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -368,26 +415,24 @@ export function generateMowPath(params: {
   const mowPoints: [number, number][] = [];
   const perimeterGroups: [number, number][][] = [];
 
-  // Outer passes as one group
+  // Outer passes — connect individual rings safely (handles MultiPolygon)
   if (outerPassRings.length > 0) {
-    perimeterGroups.push(outerPassRings.flat());
+    perimeterGroups.push(connectRingsWithSafeRoute(outerPassRings, mowArea));
   }
 
-  // Each hole's passes as a separate group
+  // Each hole's passes — connect individual rings safely
   for (const [, passes] of holePassGroups) {
-    perimeterGroups.push(passes.flat());
+    perimeterGroups.push(connectRingsWithSafeRoute(passes, mowArea));
   }
 
-  // Connect perimeter groups with safe paths
+  // Connect perimeter groups with safe routes
   for (let g = 0; g < perimeterGroups.length; g++) {
     const group = perimeterGroups[g];
     if (g > 0 && mowPoints.length > 0) {
       const from = mowPoints[mowPoints.length - 1];
       const to = group[0];
-      if (!isDirectPathInside(from, to, mowArea)) {
-        const waypoints = findBestPerimeterPath(from, to, mowArea);
-        mowPoints.push(...waypoints);
-      }
+      const waypoints = safeRoute(from, to, mowArea, mowArea);
+      mowPoints.push(...waypoints);
     }
     mowPoints.push(...group);
   }
@@ -475,10 +520,8 @@ function addDockPaths(
   if (startPoint && mowPoints.length > 0) {
     const firstMow = mowPoints[0];
     const from = result.length > 0 ? result[result.length - 1] : startPoint;
-    if (!isDirectPathInside(from, firstMow, safeArea)) {
-      const waypoints = findBestPerimeterPath(from, firstMow, safeArea);
-      result.push(...waypoints);
-    }
+    const waypoints = safeRoute(from, firstMow, safeArea, safeArea);
+    result.push(...waypoints);
   }
 
   // All mow points
@@ -487,10 +530,8 @@ function addDockPaths(
   // --- Return: Garden → Dock ---
   if (startPoint && mowPoints.length > 0) {
     const lastMow = mowPoints[mowPoints.length - 1];
-    if (!isDirectPathInside(lastMow, startPoint, safeArea)) {
-      const waypoints = findBestPerimeterPath(lastMow, startPoint, safeArea);
-      result.push(...waypoints);
-    }
+    const waypoints = safeRoute(lastMow, startPoint, safeArea, safeArea);
+    result.push(...waypoints);
   }
 
   if (dockPath && dockPath.length >= 2) {
@@ -506,12 +547,8 @@ function addDockPaths(
 /**
  * Generate parallel mowing stripes across a polygon at a given angle.
  * Stripes are sorted using nearest-neighbor, and connections between
- * stripes that would cross outside the polygon are routed along the
- * best polygon ring (outer or hole).
- */
-/**
- * @param checkArea Polygon for isDirectPathInside (full mow area)
- * @param routeArea Polygon whose rings are used for perimeter routing
+ * stripes that would cross outside the polygon are routed safely via
+ * safeRoute() — projecting onto polygon edges instead of just vertices.
  */
 function generateParallelStripes(
   area: Feature<Polygon | MultiPolygon>,
@@ -587,7 +624,7 @@ function generateParallelStripes(
     return { points: [], stripeCount: 0 };
   }
 
-  // --- Nearest-neighbor sorting with safe connections via best ring ---
+  // --- Nearest-neighbor sorting with safe connections via edge projection ---
   const result: [number, number][] = [];
   const visited = new Array(stripes.length).fill(false);
   let currentPos: [number, number] | null = startFrom ?? null;
@@ -631,17 +668,11 @@ function generateParallelStripes(
       ? [...stripes[bestIdx]].reverse()
       : stripes[bestIdx];
 
-    // Safe connection: route via best ring if direct path is outside
+    // Safe connection: route via polygon edge projection if direct path is outside
     if (currentPos !== null) {
       const target = stripe[0];
-      if (!isDirectPathInside(currentPos, target, checkArea)) {
-        const perimeterWaypoints = findBestPerimeterPath(
-          currentPos,
-          target,
-          routeArea
-        );
-        result.push(...perimeterWaypoints);
-      }
+      const routeWaypoints = safeRoute(currentPos, target, checkArea, routeArea);
+      result.push(...routeWaypoints);
     }
 
     result.push(...stripe);

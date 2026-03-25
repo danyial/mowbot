@@ -212,7 +212,16 @@ export default function SettingsPage() {
 
       if (configRes.ok) {
         const data = await configRes.json();
-        merged = { ...merged, ...data };
+        if (data && typeof data === "object") {
+          merged = {
+            ...merged,
+            connection: { ...merged.connection, ...data.connection },
+            robot: { ...merged.robot, ...data.robot },
+            navigation: { ...merged.navigation, ...data.navigation },
+            map: { ...merged.map, ...data.map },
+            safety: { ...merged.safety, ...data.safety },
+          };
+        }
       }
 
       // Sync NTRIP data from ntrip.env into the config navigation section
@@ -454,24 +463,26 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Kettenabstand (m)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={config.robot.wheelSeparation}
-                onChange={(e) =>
-                  updateConfig("robot", "wheelSeparation", parseFloat(e.target.value) || 0)
+              <Label>Kettenabstand: {Math.round((config.robot.wheelSeparation ?? 0.3) * 100)} cm</Label>
+              <Slider
+                min={10}
+                max={60}
+                step={1}
+                value={[Math.round((config.robot.wheelSeparation ?? 0.3) * 100)]}
+                onValueChange={([v]) =>
+                  updateConfig("robot", "wheelSeparation", v / 100)
                 }
               />
             </div>
             <div className="space-y-2">
-              <Label>Maehwerk-Breite (m)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={config.robot.mowWidth}
-                onChange={(e) =>
-                  updateConfig("robot", "mowWidth", parseFloat(e.target.value) || 0)
+              <Label>Maehwerk-Breite: {Math.round((config.robot.mowWidth ?? 0.2) * 100)} cm</Label>
+              <Slider
+                min={5}
+                max={50}
+                step={1}
+                value={[Math.round((config.robot.mowWidth ?? 0.2) * 100)]}
+                onValueChange={([v]) =>
+                  updateConfig("robot", "mowWidth", v / 100)
                 }
               />
             </div>
@@ -480,22 +491,22 @@ export default function SettingsPage() {
           {/* Robot dimensions */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Roboter-Laenge: {config.robot.robotLength} cm</Label>
+              <Label>Roboter-Laenge: {config.robot.robotLength ?? 50} cm</Label>
               <Slider
                 min={20}
                 max={100}
                 step={1}
-                value={[config.robot.robotLength]}
+                value={[config.robot.robotLength ?? 50]}
                 onValueChange={([v]) => updateConfig("robot", "robotLength", v)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Roboter-Breite: {config.robot.robotWidth} cm</Label>
+              <Label>Roboter-Breite: {config.robot.robotWidth ?? 35} cm</Label>
               <Slider
                 min={15}
                 max={80}
                 step={1}
-                value={[config.robot.robotWidth]}
+                value={[config.robot.robotWidth ?? 35]}
                 onValueChange={([v]) => updateConfig("robot", "robotWidth", v)}
               />
             </div>
@@ -526,12 +537,12 @@ export default function SettingsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Mindestabstand zu Grenzen: {config.robot.edgeClearance} cm</Label>
+            <Label>Mindestabstand zu Grenzen: {config.robot.edgeClearance ?? 10} cm</Label>
             <Slider
               min={0}
               max={30}
               step={1}
-              value={[config.robot.edgeClearance]}
+              value={[config.robot.edgeClearance ?? 10]}
               onValueChange={([v]) =>
                 updateConfig("robot", "edgeClearance", v)
               }
@@ -552,12 +563,12 @@ export default function SettingsPage() {
             {/* Left: Sliders */}
             <div className="flex-1 space-y-3">
               <div className="space-y-2">
-                <Label>X vor/zurueck: {config.robot.antennaOffsetX} cm</Label>
+                <Label>X vor/zurueck: {config.robot.antennaOffsetX ?? 0} cm</Label>
                 <Slider
                   min={-25}
                   max={25}
                   step={1}
-                  value={[config.robot.antennaOffsetX]}
+                  value={[config.robot.antennaOffsetX ?? 0]}
                   onValueChange={([v]) =>
                     updateConfig("robot", "antennaOffsetX", v)
                   }
@@ -568,12 +579,12 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Y links/rechts: {config.robot.antennaOffsetY} cm</Label>
+                <Label>Y links/rechts: {config.robot.antennaOffsetY ?? 0} cm</Label>
                 <Slider
                   min={-25}
                   max={25}
                   step={1}
-                  value={[config.robot.antennaOffsetY]}
+                  value={[config.robot.antennaOffsetY ?? 0]}
                   onValueChange={([v]) =>
                     updateConfig("robot", "antennaOffsetY", v)
                   }
@@ -588,10 +599,10 @@ export default function SettingsPage() {
             {/* Right: Schematic */}
             <div className="flex-shrink-0">
               <RobotSchematic
-                length={config.robot.robotLength}
-                width={config.robot.robotWidth}
-                antennaX={config.robot.antennaOffsetX}
-                antennaY={config.robot.antennaOffsetY}
+                length={config.robot.robotLength ?? 50}
+                width={config.robot.robotWidth ?? 35}
+                antennaX={config.robot.antennaOffsetX ?? 0}
+                antennaY={config.robot.antennaOffsetY ?? 0}
               />
             </div>
           </div>

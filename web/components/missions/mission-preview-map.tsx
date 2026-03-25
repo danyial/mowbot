@@ -438,19 +438,63 @@ export default function MissionPreviewMap({
           );
         })}
 
-        {/* Planned path — dimmed during simulation */}
-        {pathPoints.length >= 2 && (
-          <Polyline
-            positions={pathPoints.map(
-              ([lat, lon]) => [lat, lon] as LatLngExpression
-            )}
-            pathOptions={{
-              color: "#3b82f6",
-              weight: 2,
-              opacity: simulating ? 0.2 : 0.7,
-            }}
-          />
-        )}
+        {/* Planned path — split into dock (purple) and mow (blue) segments */}
+        {pathPoints.length >= 2 && (() => {
+          const exitLen = mission.dockExitLength ?? 0;
+          const entryLen = mission.dockEntryLength ?? 0;
+          const opacity = simulating ? 0.2 : 0.7;
+          const toLatLng = ([lat, lon]: [number, number]) => [lat, lon] as LatLngExpression;
+
+          const exitPath = exitLen > 0
+            ? pathPoints.slice(0, exitLen + 1).map(toLatLng)
+            : [];
+          const mowPath = pathPoints
+            .slice(Math.max(0, exitLen), entryLen > 0 ? pathPoints.length - entryLen + 1 : pathPoints.length)
+            .map(toLatLng);
+          const entryPath = entryLen > 0
+            ? pathPoints.slice(pathPoints.length - entryLen - 1).map(toLatLng)
+            : [];
+
+          return (
+            <>
+              {/* Dock exit path — purple dashed */}
+              {exitPath.length >= 2 && (
+                <Polyline
+                  positions={exitPath}
+                  pathOptions={{
+                    color: "#a855f7",
+                    weight: 2,
+                    opacity,
+                    dashArray: "6, 4",
+                  }}
+                />
+              )}
+              {/* Mow path — blue */}
+              {mowPath.length >= 2 && (
+                <Polyline
+                  positions={mowPath}
+                  pathOptions={{
+                    color: "#3b82f6",
+                    weight: 2,
+                    opacity,
+                  }}
+                />
+              )}
+              {/* Dock entry path — purple dashed */}
+              {entryPath.length >= 2 && (
+                <Polyline
+                  positions={entryPath}
+                  pathOptions={{
+                    color: "#a855f7",
+                    weight: 2,
+                    opacity,
+                    dashArray: "6, 4",
+                  }}
+                />
+              )}
+            </>
+          );
+        })()}
 
         {/* Completed path (from real execution, not simulation) */}
         {!simulating && mission.completedPoints.length >= 2 && (

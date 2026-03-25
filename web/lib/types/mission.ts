@@ -28,6 +28,8 @@ export interface Mission {
   turns: number; // number of direction changes (stripes - 1)
   perimeterArea: number; // m² covered by perimeter passes
   innerArea: number; // m² covered by inner stripes
+  dockExitLength: number; // number of path points at the start that belong to dock exit path
+  dockEntryLength: number; // number of path points at the end that belong to dock entry path
   startPoint?: [number, number]; // [lat, lon] — dock or GPS start/end position
   edgeClearance?: number; // meters — minimum clearance of robot edge from boundaries
   robotWidth?: number; // meters — robot width for center-to-edge offset
@@ -53,4 +55,6 @@ export interface PlanResult {
   turns: number; // number of direction changes
   perimeterArea: number; // m² covered by perimeter passes
   innerArea: number; // m² covered by inner stripes
+  dockExitLength: number; // number of path points at the start for dock exit
+  dockEntryLength: number; // number of path points at the end for dock entry
 }

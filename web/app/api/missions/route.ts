@@ -166,6 +166,8 @@ export async function POST(request: Request) {
       turns: planResult.turns,
       perimeterArea: planResult.perimeterArea,
       innerArea: planResult.innerArea,
+      dockExitLength: planResult.dockExitLength,
+      dockEntryLength: planResult.dockEntryLength,
       startPoint,
       edgeClearance,
       robotWidth,

@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       )
       .map((z) => z.geometry.coordinates as number[][][]);
 
-    // Re-generate path with new angle
+    // Re-generate path with new angle, using existing startPoint
     const planResult = generateMowPath({
       zonePolygons: mowPolygons,
       exclusionPolygons,
@@ -103,6 +103,7 @@ export async function POST(request: Request) {
       perimeterPasses: mission.perimeterPasses,
       angle: newAngle,
       speed: mission.speed,
+      startPoint: mission.startPoint,
     });
 
     // Update mission

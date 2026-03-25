@@ -85,12 +85,10 @@ export async function POST(request: Request) {
     const perimeterPasses = body.perimeterPasses ?? 2;
     const angle = body.angle ?? 0;
     const angleIncrement = body.angleIncrement ?? 45;
+    const startPoint: [number, number] | undefined = body.startPoint ?? undefined;
 
     // Resolve zones to polygons
     const { mowPolygons, exclusionPolygons } = resolveZones(zones, zoneIds);
-
-    // Calculate the effective angle for this execution (first run = base angle)
-    const effectiveAngle = angle;
 
     // Generate mow path
     const planResult = generateMowPath({
@@ -99,8 +97,9 @@ export async function POST(request: Request) {
       spacing,
       overlap,
       perimeterPasses,
-      angle: effectiveAngle,
+      angle,
       speed,
+      startPoint,
     });
 
     const mission: Mission = {
@@ -126,6 +125,7 @@ export async function POST(request: Request) {
       turns: planResult.turns,
       perimeterArea: planResult.perimeterArea,
       innerArea: planResult.innerArea,
+      startPoint,
     };
 
     missions.push(mission);

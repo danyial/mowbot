@@ -159,12 +159,16 @@ function SimulationLayer({
   onEnd,
 }: SimulationLayerProps) {
   const markerRef = useRef<L.Marker>(null);
+  const trailLineRef = useRef<L.Polyline | null>(null);
   const distanceTraveled = useRef(0);
   const lastTimestamp = useRef<number | null>(null);
+  const lastTrailUpdate = useRef(0);
+  const lastReportedProgress = useRef(0);
   const animFrameId = useRef<number>(0);
-  const [trail, setTrail] = useState<LatLngExpression[]>([]);
+  const currentHeading = useRef(0);
+  const iconCache = useRef<Map<number, L.DivIcon>>(new Map());
+
   const [markerPos, setMarkerPos] = useState<[number, number]>(pathPoints[0]);
-  const [heading, setHeading] = useState(0);
 
   const cumDists = useRef(computeCumulativeDistances(pathPoints));
   const totalDistance = cumDists.current[cumDists.current.length - 1];
@@ -175,25 +179,28 @@ function SimulationLayer({
   const onProgressRef = useRef(onProgress);
   const onEndRef = useRef(onEnd);
 
-  useEffect(() => {
-    simSpeedRef.current = simSpeed;
-  }, [simSpeed]);
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-  useEffect(() => {
-    onProgressRef.current = onProgress;
-  }, [onProgress]);
-  useEffect(() => {
-    onEndRef.current = onEnd;
-  }, [onEnd]);
+  useEffect(() => { simSpeedRef.current = simSpeed; }, [simSpeed]);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { onProgressRef.current = onProgress; }, [onProgress]);
+  useEffect(() => { onEndRef.current = onEnd; }, [onEnd]);
+
+  // Get or create a cached icon for a given heading (rounded to 10°)
+  const getIcon = useCallback((h: number) => {
+    const key = Math.round(h / 10) * 10;
+    let icon = iconCache.current.get(key);
+    if (!icon) {
+      icon = createRobotIcon(key);
+      iconCache.current.set(key, icon);
+    }
+    return icon;
+  }, []);
 
   // Animation loop
   useEffect(() => {
     distanceTraveled.current = 0;
     lastTimestamp.current = null;
-    setTrail([[pathPoints[0][0], pathPoints[0][1]]]);
-    setMarkerPos(pathPoints[0]);
+    lastTrailUpdate.current = 0;
+    lastReportedProgress.current = 0;
 
     function tick(timestamp: number) {
       if (lastTimestamp.current === null) {
@@ -213,29 +220,64 @@ function SimulationLayer({
         if (distanceTraveled.current >= totalDistance) {
           // Simulation ended
           distanceTraveled.current = totalDistance;
+
+          // Final marker position
           const endPos = pathPoints[pathPoints.length - 1];
-          setMarkerPos(endPos);
-          setTrail(
-            pathPoints.map(([lat, lon]) => [lat, lon] as LatLngExpression)
-          );
+          if (markerRef.current) {
+            markerRef.current.setLatLng(endPos);
+          }
+
+          // Final trail
+          if (trailLineRef.current) {
+            const allLatLngs = pathPoints.map(
+              ([lat, lon]) => L.latLng(lat, lon)
+            );
+            trailLineRef.current.setLatLngs(allLatLngs);
+          }
+
           onProgressRef.current(1, totalDistance / speed);
           onEndRef.current();
           return;
         }
 
-        const { position, heading: h } = interpolatePosition(
+        const { position, heading: h, segmentIndex } = interpolatePosition(
           pathPoints,
           cumDists.current,
           distanceTraveled.current
         );
 
-        setMarkerPos(position);
-        setHeading(h);
-        setTrail((prev) => [...prev, [position[0], position[1]]]);
+        // Move marker imperatively (no React re-render)
+        if (markerRef.current) {
+          markerRef.current.setLatLng(position);
 
+          // Update icon only when heading changes significantly
+          const roundedNew = Math.round(h / 10) * 10;
+          const roundedOld = Math.round(currentHeading.current / 10) * 10;
+          if (roundedNew !== roundedOld) {
+            currentHeading.current = h;
+            markerRef.current.setIcon(getIcon(h));
+          }
+        }
+
+        // Update trail every 100ms (not every frame)
+        if (timestamp - lastTrailUpdate.current > 100) {
+          lastTrailUpdate.current = timestamp;
+          if (trailLineRef.current) {
+            const trailLatLngs = pathPoints
+              .slice(0, segmentIndex + 1)
+              .map(([lat, lon]) => L.latLng(lat, lon));
+            trailLatLngs.push(L.latLng(position[0], position[1]));
+            trailLineRef.current.setLatLngs(trailLatLngs);
+          }
+        }
+
+        // Report progress throttled (every 0.5%)
         const progress = distanceTraveled.current / totalDistance;
-        const timeElapsed = distanceTraveled.current / speed;
-        onProgressRef.current(progress, timeElapsed);
+        if (progress - lastReportedProgress.current >= 0.005) {
+          lastReportedProgress.current = progress;
+          const timeElapsed = distanceTraveled.current / speed;
+          onProgressRef.current(progress, timeElapsed);
+        }
       }
 
       lastTimestamp.current = timestamp;
@@ -249,36 +291,31 @@ function SimulationLayer({
         cancelAnimationFrame(animFrameId.current);
       }
     };
-  }, [pathPoints, speed, totalDistance]);
+  }, [pathPoints, speed, totalDistance, getIcon]);
 
-  // Update marker icon when heading changes (throttled via useMemo-like approach)
-  const icon = useRef(createRobotIcon(0));
-  useEffect(() => {
-    icon.current = createRobotIcon(heading);
-    if (markerRef.current) {
-      markerRef.current.setIcon(icon.current);
-    }
-  }, [Math.round(heading / 5) * 5]); // Update every 5 degrees
+  // Capture trail Polyline ref
+  const trailRef = useCallback((el: L.Polyline | null) => {
+    trailLineRef.current = el;
+  }, []);
 
   return (
     <>
-      {/* Trail (already driven) */}
-      {trail.length >= 2 && (
-        <Polyline
-          positions={trail}
-          pathOptions={{
-            color: "#22c55e",
-            weight: 3,
-            opacity: 0.9,
-          }}
-        />
-      )}
+      {/* Trail (already driven) — updated imperatively */}
+      <Polyline
+        ref={trailRef}
+        positions={[pathPoints[0].map(Number) as [number, number]]}
+        pathOptions={{
+          color: "#22c55e",
+          weight: 3,
+          opacity: 0.9,
+        }}
+      />
 
-      {/* Robot marker */}
+      {/* Robot marker — moved imperatively */}
       <Marker
         ref={markerRef}
         position={markerPos}
-        icon={icon.current}
+        icon={getIcon(0)}
         interactive={false}
       />
     </>

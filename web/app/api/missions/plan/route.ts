@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const speed = body.speed ?? 0.3;
     const perimeterPasses = body.perimeterPasses ?? 2;
     const angle = body.angle ?? 0;
+    const startPoint: [number, number] | undefined = body.startPoint ?? undefined;
 
     const isAll = zoneIds.length === 1 && zoneIds[0] === "all";
     const allZones = zones.features;
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
       perimeterPasses,
       angle,
       speed,
+      startPoint,
     });
 
     return NextResponse.json(result);

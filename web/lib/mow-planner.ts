@@ -174,6 +174,8 @@ export function generateMowPath(params: {
   perimeterPasses: number;
   angle: number;
   speed: number;
+  /** Start/end point [lat, lon] — dock centroid or GPS position */
+  startPoint?: [number, number];
 }): PlanResult {
   const {
     zonePolygons,
@@ -183,6 +185,7 @@ export function generateMowPath(params: {
     perimeterPasses,
     angle,
     speed,
+    startPoint,
   } = params;
 
   const emptyResult: PlanResult = {
@@ -241,8 +244,9 @@ export function generateMowPath(params: {
 
   if (turf.area(mowArea) < 0.01) return emptyResult;
 
-  const allPoints: [number, number][] = [];
+  const mowPoints: [number, number][] = [];
   const totalArea = turf.area(mowArea);
+  const outerRing = getOuterRing(mowArea);
 
   // 4. Generate perimeter passes
   let innerAreaFeature = mowArea;
@@ -254,7 +258,7 @@ export function generateMowPath(params: {
     if (!buffered || turf.area(buffered) < 0.01) break;
 
     const perimeterPoints = extractPerimeterPoints(buffered);
-    allPoints.push(...perimeterPoints);
+    mowPoints.push(...perimeterPoints);
 
     innerAreaFeature = buffered as Feature<Polygon | MultiPolygon>;
   }
@@ -268,6 +272,8 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
+      // Entire area covered by perimeter passes — add start/return paths
+      const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, outerRing);
       return buildResult(allPoints, speed, 0, totalArea, 0);
     }
   }
@@ -277,7 +283,7 @@ export function generateMowPath(params: {
 
   // 5. Generate parallel stripes with safe connections between them
   const lastPoint =
-    allPoints.length > 0 ? allPoints[allPoints.length - 1] : undefined;
+    mowPoints.length > 0 ? mowPoints[mowPoints.length - 1] : undefined;
 
   const { points: stripePoints, stripeCount } = generateParallelStripes(
     innerAreaFeature,
@@ -286,9 +292,12 @@ export function generateMowPath(params: {
     mowArea, // pass the safe mow area for connection checks
     lastPoint
   );
-  allPoints.push(...stripePoints);
+  mowPoints.push(...stripePoints);
 
   const turns = Math.max(0, stripeCount - 1);
+
+  // 6. Add start path (dock/GPS → first mow point) and return path (last mow point → dock/GPS)
+  const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, outerRing);
 
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm);
 }
@@ -296,6 +305,43 @@ export function generateMowPath(params: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Prepend a path from startPoint to the first mow point, and append
+ * a return path from the last mow point back to startPoint.
+ * Connections route along the polygon perimeter when direct path is outside.
+ */
+function addStartReturnPaths(
+  startPoint: [number, number] | undefined,
+  mowPoints: [number, number][],
+  safeArea: Feature<Polygon | MultiPolygon>,
+  outerRing: number[][]
+): [number, number][] {
+  if (!startPoint || mowPoints.length === 0) return mowPoints;
+
+  const result: [number, number][] = [];
+
+  // Start: startPoint → first mow point
+  result.push(startPoint);
+  const firstMow = mowPoints[0];
+  if (!isDirectPathInside(startPoint, firstMow, safeArea)) {
+    const waypoints = findPerimeterPath(startPoint, firstMow, outerRing);
+    result.push(...waypoints);
+  }
+
+  // All mow points
+  result.push(...mowPoints);
+
+  // Return: last mow point → startPoint
+  const lastMow = mowPoints[mowPoints.length - 1];
+  if (!isDirectPathInside(lastMow, startPoint, safeArea)) {
+    const waypoints = findPerimeterPath(lastMow, startPoint, outerRing);
+    result.push(...waypoints);
+  }
+  result.push(startPoint);
+
+  return result;
+}
 
 function extractPerimeterPoints(
   feature: Feature<Polygon | MultiPolygon>

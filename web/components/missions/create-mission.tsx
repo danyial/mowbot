@@ -25,6 +25,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { useZoneStore } from "@/lib/store/zone-store";
+import { useGpsStore } from "@/lib/store/gps-store";
 import { toast } from "@/components/ui/use-toast";
 import { formatDistance, formatDuration } from "@/lib/utils/formatting";
 import type { PlanResult } from "@/lib/types/mission";
@@ -48,6 +49,8 @@ export function CreateMission() {
   const zones = useZoneStore((s) => s.zones);
   const loadZones = useZoneStore((s) => s.loadZones);
   const zonesLoaded = useZoneStore((s) => s.loaded);
+  const gpsLat = useGpsStore((s) => s.latitude);
+  const gpsLon = useGpsStore((s) => s.longitude);
 
   // Load zones if not loaded
   useEffect(() => {
@@ -62,6 +65,24 @@ export function CreateMission() {
   );
 
   const zoneIds = mowAll ? ["all"] : selectedZoneId ? [selectedZoneId] : ["all"];
+
+  // Determine start point: dock zone centroid > GPS position > undefined
+  const startPoint = (() => {
+    const dockZone = zones.find(
+      (z) => z.properties.zoneType === "dock" && z.geometry.type === "Polygon"
+    );
+    if (dockZone) {
+      const coords = dockZone.geometry.coordinates as number[][][];
+      const ring = coords[0].slice(0, -1); // Remove closing point
+      const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      const avgLon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+      return [avgLat, avgLon] as [number, number];
+    }
+    if (gpsLat !== null && gpsLon !== null) {
+      return [gpsLat, gpsLon] as [number, number];
+    }
+    return undefined;
+  })();
 
   // Fetch plan preview when params change
   useEffect(() => {
@@ -80,6 +101,7 @@ export function CreateMission() {
             speed: speed / 100,
             perimeterPasses,
             angle,
+            startPoint,
           }),
         });
         if (res.ok) {
@@ -111,6 +133,7 @@ export function CreateMission() {
       perimeterPasses,
       angle,
       angleIncrement,
+      startPoint,
     });
 
     toast({

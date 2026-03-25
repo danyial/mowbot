@@ -28,6 +28,7 @@ export interface Mission {
   turns: number; // number of direction changes (stripes - 1)
   perimeterArea: number; // m² covered by perimeter passes
   innerArea: number; // m² covered by inner stripes
+  startPoint?: [number, number]; // [lat, lon] — dock or GPS start/end position
 }
 
 export interface CreateMissionInput {
@@ -39,6 +40,7 @@ export interface CreateMissionInput {
   perimeterPasses?: number;
   angle?: number;
   angleIncrement?: number;
+  startPoint?: [number, number]; // [lat, lon]
 }
 
 /** Result from path planning (used for preview and storage) */

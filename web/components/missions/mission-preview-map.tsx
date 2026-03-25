@@ -21,7 +21,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
       const bounds = L.latLngBounds(
         points.map(([lat, lon]) => [lat, lon] as [number, number])
       );
-      map.fitBounds(bounds, { padding: [30, 30] });
+      map.fitBounds(bounds, { padding: [10, 10] });
       fitted.current = true;
     }
   }, [points, map]);

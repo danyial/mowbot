@@ -43,9 +43,7 @@ rcl_node_t node;
 unsigned long last_cmd_time = 0;
 #define CMD_TIMEOUT_MS 500
 
-// Agent-Ping: nur alle 5 Sekunden statt jeden Loop-Durchlauf
-unsigned long last_ping_time = 0;
-#define PING_INTERVAL_MS 5000
+// Agent-Ping: nur im WAITING_AGENT State verwendet
 
 // micro-ROS Verbindungsstatus
 enum AgentState { WAITING_AGENT, AGENT_AVAILABLE, AGENT_CONNECTED, AGENT_DISCONNECTED };
@@ -178,7 +176,6 @@ void loop() {
       // Agent gefunden, Entities erstellen
       if (create_microros_entities()) {
         last_cmd_time = millis();
-        last_ping_time = millis();
         agent_state = AGENT_CONNECTED;
         // Schnelles Blinken = verbunden
         digitalWrite(LED_PIN, LOW);
@@ -188,28 +185,16 @@ void loop() {
       break;
 
     case AGENT_CONNECTED: {
-      // Schnelles Blinken = verbunden, warte auf cmd_vel
-      // (LED wird auf HIGH gesetzt in cmd_vel_callback wenn Nachricht kommt)
+      // LED: schnelles Blinken wenn idle, Dauer-an wird in cmd_vel_callback gesetzt
       if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {
-        // Kein cmd_vel seit Timeout → blinken statt Dauer-an
         blink_led(250);
       }
 
-      // Agent-Ping nur alle PING_INTERVAL_MS (nicht jeden Loop!)
-      // Der Ping blockiert bis zu 100ms und verhindert das Empfangen von Nachrichten
-      bool agent_ok = true;
-      if (millis() - last_ping_time >= PING_INTERVAL_MS) {
-        agent_ok = (rmw_uros_ping_agent(100, 3) == RMW_RET_OK);
-        last_ping_time = millis();
-      }
-
-      if (agent_ok) {
-        // Executor verarbeitet eingehende Nachrichten
-        // 100ms Spin-Time gibt dem Executor genug Zeit zum Empfangen
-        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-      } else {
-        agent_state = AGENT_DISCONNECTED;
-      }
+      // KEIN Ping im Connected-State! Der Ping blockiert den Serial-Port
+      // für bis zu 300ms und verhindert das Empfangen von cmd_vel Nachrichten.
+      // Sicherheit ist trotzdem gewährleistet: der Watchdog (CMD_TIMEOUT_MS)
+      // stoppt die Motoren nach 500ms ohne cmd_vel.
+      rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
 
       // Safety: Stoppe Motoren wenn kein cmd_vel seit CMD_TIMEOUT_MS
       if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {

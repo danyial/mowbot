@@ -9,7 +9,8 @@
  * 4. Generate perimeter passes (inward polygon offsets)
  * 5. Generate parallel stripes at the given angle over the remaining inner area
  * 6. Sort stripes by nearest-neighbor for shortest travel between stripes
- * 7. Return waypoints + distance estimate + area stats
+ * 7. Connect stripes via polygon perimeter when direct path crosses boundary
+ * 8. Return waypoints + distance estimate + area stats
  */
 
 import * as turf from "@turf/turf";
@@ -23,23 +24,155 @@ function distSq(a: [number, number], b: [number, number]): number {
   return dLat * dLat + dLon * dLon;
 }
 
+/** Euclidean distance between two [lon, lat] GeoJSON coords */
+function geoDistSq(a: number[], b: number[]): number {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy;
+}
+
+/**
+ * Get the outer ring of a (Multi)Polygon as [[lon, lat], ...].
+ * For MultiPolygon, returns the ring of the largest sub-polygon.
+ */
+function getOuterRing(
+  feature: Feature<Polygon | MultiPolygon>
+): number[][] {
+  if (feature.geometry.type === "Polygon") {
+    return feature.geometry.coordinates[0];
+  }
+  // MultiPolygon — pick the largest
+  let bestRing = feature.geometry.coordinates[0][0];
+  let bestArea = 0;
+  for (const polyCoords of feature.geometry.coordinates) {
+    try {
+      const a = turf.area(turf.polygon(polyCoords));
+      if (a > bestArea) {
+        bestArea = a;
+        bestRing = polyCoords[0];
+      }
+    } catch {
+      // skip
+    }
+  }
+  return bestRing;
+}
+
+/**
+ * Find the index of the nearest point on a ring to the given [lat, lon] point.
+ */
+function findNearestRingIndex(
+  point: [number, number], // [lat, lon]
+  ring: number[][] // [[lon, lat], ...]
+): number {
+  const [lat, lon] = point;
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const d = geoDistSq([lon, lat], ring[i]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+/**
+ * Extract a slice of ring points from index `from` to index `to`,
+ * walking forward (wrapping around). Excludes closing point.
+ */
+function ringSliceForward(
+  ring: number[][],
+  from: number,
+  to: number
+): number[][] {
+  const n = ring.length - 1; // exclude closing point (same as first)
+  const result: number[][] = [];
+  let i = from;
+  while (i !== to) {
+    result.push(ring[i]);
+    i = (i + 1) % n;
+  }
+  result.push(ring[to]);
+  return result;
+}
+
+/**
+ * Calculate the total distance of a path of [lon, lat] coords.
+ */
+function pathLengthGeo(coords: number[][]): number {
+  let len = 0;
+  for (let i = 1; i < coords.length; i++) {
+    len += Math.sqrt(geoDistSq(coords[i - 1], coords[i]));
+  }
+  return len;
+}
+
+/**
+ * Find the shortest path along the polygon perimeter from point A to point B.
+ * Returns intermediate [lat, lon] waypoints (excluding A and B themselves).
+ * All points lie on the safe-area boundary, maintaining the safety margin.
+ */
+function findPerimeterPath(
+  from: [number, number], // [lat, lon]
+  to: [number, number], // [lat, lon]
+  ring: number[][] // outer ring [[lon, lat], ...]
+): [number, number][] {
+  const fromIdx = findNearestRingIndex(from, ring);
+  const toIdx = findNearestRingIndex(to, ring);
+
+  if (fromIdx === toIdx) return [];
+
+  // Two possible paths around the ring
+  const pathForward = ringSliceForward(ring, fromIdx, toIdx);
+  const pathBackward = ringSliceForward(ring, toIdx, fromIdx).reverse();
+
+  // Pick shorter
+  const shorter =
+    pathLengthGeo(pathForward) <= pathLengthGeo(pathBackward)
+      ? pathForward
+      : pathBackward;
+
+  // Convert [lon, lat] → [lat, lon], skip first and last (they are from/to)
+  return shorter
+    .slice(1, -1)
+    .map(([lon, lat]) => [lat, lon] as [number, number]);
+}
+
+/**
+ * Check if a direct line between two [lat, lon] points stays within the polygon.
+ */
+function isDirectPathInside(
+  from: [number, number],
+  to: [number, number],
+  area: Feature<Polygon | MultiPolygon>
+): boolean {
+  try {
+    const line = turf.lineString([
+      [from[1], from[0]], // [lon, lat]
+      [to[1], to[0]],
+    ]);
+    return turf.booleanWithin(line, area);
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main entry point
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Generate a complete mow path for the given parameters.
  */
 export function generateMowPath(params: {
-  /** Polygons of zones to mow (GeoJSON coordinates) */
   zonePolygons: number[][][][];
-  /** Polygons of exclusion zones */
   exclusionPolygons: number[][][][];
-  /** Mow width in meters */
   spacing: number;
-  /** Overlap fraction 0-1 */
   overlap: number;
-  /** Number of perimeter passes */
   perimeterPasses: number;
-  /** Stripe angle in degrees (0 = East-West) */
   angle: number;
-  /** Speed in m/s (for duration estimate) */
   speed: number;
 }): PlanResult {
   const {
@@ -66,7 +199,7 @@ export function generateMowPath(params: {
   const effectiveSpacing = spacing * (1 - overlap);
   if (effectiveSpacing <= 0) return emptyResult;
 
-  const safetyMargin = spacing / 2; // half mow-width as clearance
+  const safetyMargin = spacing / 2;
 
   // 1. Build the mow area: union all zone polygons
   let mowArea: Feature<Polygon | MultiPolygon> = turf.polygon(zonePolygons[0]);
@@ -81,7 +214,6 @@ export function generateMowPath(params: {
   }
 
   // 2. Apply safety margin: shrink mow area by half the mow width
-  //    so the robot center never crosses the boundary
   const safeArea = turf.buffer(mowArea, -safetyMargin / 1000, {
     units: "kilometers",
   });
@@ -92,23 +224,25 @@ export function generateMowPath(params: {
   for (const exCoords of exclusionPolygons) {
     try {
       const exclusion = turf.polygon(exCoords);
-      // Expand exclusion by half mow-width for safe clearance
       const expanded = turf.buffer(exclusion, safetyMargin / 1000, {
         units: "kilometers",
       });
-      const exFeature = (expanded || exclusion) as Feature<Polygon | MultiPolygon>;
-      const diff = turf.difference(turf.featureCollection([mowArea, exFeature]));
+      const exFeature = (expanded || exclusion) as Feature<
+        Polygon | MultiPolygon
+      >;
+      const diff = turf.difference(
+        turf.featureCollection([mowArea, exFeature])
+      );
       if (diff) mowArea = diff as Feature<Polygon | MultiPolygon>;
     } catch {
       // Skip invalid exclusions
     }
   }
 
-  // Check if anything remains after safety margin + exclusions
   if (turf.area(mowArea) < 0.01) return emptyResult;
 
   const allPoints: [number, number][] = [];
-  const totalArea = turf.area(mowArea); // m² of safe mow area
+  const totalArea = turf.area(mowArea);
 
   // 4. Generate perimeter passes
   let innerAreaFeature = mowArea;
@@ -134,17 +268,14 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
-      // Entire area covered by perimeter passes
       return buildResult(allPoints, speed, 0, totalArea, 0);
     }
   }
 
-  // Calculate areas
   const innerAreaSqm = turf.area(innerAreaFeature);
   const perimeterAreaSqm = Math.max(0, totalArea - innerAreaSqm);
 
-  // 5. Generate parallel stripes over the inner area
-  //    Pass last perimeter point so nearest-neighbor starts from there
+  // 5. Generate parallel stripes with safe connections between them
   const lastPoint =
     allPoints.length > 0 ? allPoints[allPoints.length - 1] : undefined;
 
@@ -152,6 +283,7 @@ export function generateMowPath(params: {
     innerAreaFeature,
     effectiveSpacing,
     angle,
+    mowArea, // pass the safe mow area for connection checks
     lastPoint
   );
   allPoints.push(...stripePoints);
@@ -161,9 +293,10 @@ export function generateMowPath(params: {
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm);
 }
 
-/**
- * Extract perimeter ring points from a (Multi)Polygon as [lat, lon] waypoints.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 function extractPerimeterPoints(
   feature: Feature<Polygon | MultiPolygon>
 ): [number, number][] {
@@ -184,25 +317,21 @@ function extractPerimeterPoints(
 
 /**
  * Generate parallel mowing stripes across a polygon at a given angle.
- * Stripes are sorted using nearest-neighbor for shortest travel distance.
- *
- * @param startFrom Optional [lat, lon] of the last perimeter point to
- *                  start nearest-neighbor sorting from.
+ * Stripes are sorted using nearest-neighbor, and connections between
+ * stripes that would cross outside the polygon are routed along the
+ * polygon perimeter instead.
  */
 function generateParallelStripes(
   area: Feature<Polygon | MultiPolygon>,
   spacing: number,
   angleDeg: number,
+  safeArea: Feature<Polygon | MultiPolygon>,
   startFrom?: [number, number]
 ): { points: [number, number][]; stripeCount: number } {
   const centroid = turf.centroid(area);
-  const centerLat = centroid.geometry.coordinates[1];
 
-  // Convert spacing from meters to approximate degrees latitude
   const spacingDeg = spacing / 111320;
 
-  // If angle is non-zero, rotate the polygon so stripes become horizontal (0°),
-  // generate stripes, then rotate points back.
   const useRotation = Math.abs(angleDeg % 360) > 0.1;
 
   let workArea = area;
@@ -212,11 +341,9 @@ function generateParallelStripes(
     }) as Feature<Polygon | MultiPolygon>;
   }
 
-  // Get bbox of the (possibly rotated) work area
   const [wMinLon, wMinLat, wMaxLon, wMaxLat] = turf.bbox(workArea);
 
-  // Generate horizontal scan lines across the work area
-  // Each stripe is a list of [lat, lon] waypoint pairs (entry, exit)
+  // Generate horizontal scan lines — each stripe is a separate segment
   const stripes: [number, number][][] = [];
 
   let y = wMinLat + spacingDeg / 2;
@@ -226,41 +353,44 @@ function generateParallelStripes(
       [wMaxLon + 0.001, y],
     ];
     const scanLine = turf.lineString(lineCoords);
-
     const intersections = findLinePolygonIntersections(scanLine, workArea);
 
     if (intersections.length >= 2) {
-      // Sort intersections by longitude
       intersections.sort((a, b) => a[0] - b[0]);
 
-      // Create segments (pairs of entry/exit points)
-      const stripePoints: [number, number][] = [];
+      // Each pair of intersections is one stripe segment
+      // For concave polygons, there can be multiple segments per scan line
       for (let i = 0; i < intersections.length - 1; i += 2) {
         const entry = intersections[i];
         const exit = intersections[i + 1];
         if (!exit) continue;
 
+        let startPt: [number, number];
+        let endPt: [number, number];
+
         if (useRotation) {
-          const entryPt = turf.transformRotate(turf.point(entry), angleDeg, {
-            pivot: centroid.geometry.coordinates as [number, number],
-          });
+          const entryPt = turf.transformRotate(
+            turf.point(entry),
+            angleDeg,
+            { pivot: centroid.geometry.coordinates as [number, number] }
+          );
           const exitPt = turf.transformRotate(turf.point(exit), angleDeg, {
             pivot: centroid.geometry.coordinates as [number, number],
           });
-          stripePoints.push(
-            [entryPt.geometry.coordinates[1], entryPt.geometry.coordinates[0]],
-            [exitPt.geometry.coordinates[1], exitPt.geometry.coordinates[0]]
-          );
+          startPt = [
+            entryPt.geometry.coordinates[1],
+            entryPt.geometry.coordinates[0],
+          ];
+          endPt = [
+            exitPt.geometry.coordinates[1],
+            exitPt.geometry.coordinates[0],
+          ];
         } else {
-          stripePoints.push(
-            [entry[1], entry[0]], // [lat, lon]
-            [exit[1], exit[0]]
-          );
+          startPt = [entry[1], entry[0]];
+          endPt = [exit[1], exit[0]];
         }
-      }
 
-      if (stripePoints.length > 0) {
-        stripes.push(stripePoints);
+        stripes.push([startPt, endPt]);
       }
     }
 
@@ -271,11 +401,8 @@ function generateParallelStripes(
     return { points: [], stripeCount: 0 };
   }
 
-  // --- Nearest-neighbor sorting ---
-  // Instead of fixed boustrophedon order, pick the closest unvisited stripe
-  // from the current position. This minimizes travel between stripes,
-  // especially for complex polygon shapes.
-
+  // --- Nearest-neighbor sorting with safe connections ---
+  const outerRing = getOuterRing(safeArea);
   const result: [number, number][] = [];
   const visited = new Array(stripes.length).fill(false);
   let currentPos: [number, number] | null = startFrom ?? null;
@@ -293,7 +420,6 @@ function generateParallelStripes(
       const stripeEnd = stripe[stripe.length - 1];
 
       if (currentPos === null) {
-        // First stripe — just pick the first one
         bestIdx = i;
         break;
       }
@@ -320,6 +446,20 @@ function generateParallelStripes(
       ? [...stripes[bestIdx]].reverse()
       : stripes[bestIdx];
 
+    // Check if direct connection from currentPos to stripe start is inside
+    if (currentPos !== null) {
+      const target = stripe[0];
+      if (!isDirectPathInside(currentPos, target, safeArea)) {
+        // Route via polygon perimeter
+        const perimeterWaypoints = findPerimeterPath(
+          currentPos,
+          target,
+          outerRing
+        );
+        result.push(...perimeterWaypoints);
+      }
+    }
+
     result.push(...stripe);
     currentPos = stripe[stripe.length - 1];
   }
@@ -327,10 +467,6 @@ function generateParallelStripes(
   return { points: result, stripeCount: stripes.length };
 }
 
-/**
- * Find intersection points of a line with a (Multi)Polygon boundary.
- * Returns [lon, lat] coordinate pairs.
- */
 function findLinePolygonIntersections(
   line: Feature<import("geojson").LineString>,
   polygon: Feature<Polygon | MultiPolygon>
@@ -345,9 +481,6 @@ function findLinePolygonIntersections(
   }
 }
 
-/**
- * Build the final PlanResult from waypoints + speed + area stats.
- */
 function buildResult(
   points: [number, number][],
   speed: number,

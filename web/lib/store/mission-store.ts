@@ -17,6 +17,8 @@ interface MissionState {
   stopMission: (missionId?: string) => void;
   returnHome: () => void;
   deleteMission: (id: string) => Promise<void>;
+  resumeAbortedMission: (id: string) => Promise<void>;
+  replanMission: (id: string) => Promise<void>;
   updateProgress: (missionId: string, progress: number, completedPoints: [number, number][]) => void;
   updateMissionStatus: (missionId: string, status: Mission["status"]) => void;
 }
@@ -141,6 +143,48 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   returnHome: () => {
     publishMowerCommand({ action: "return_home" });
+  },
+
+  resumeAbortedMission: async (id: string) => {
+    // Set status back to "planned" — keeps completedPoints so it can continue
+    try {
+      const res = await fetch("/api/missions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "planned", completedAt: null }),
+      });
+      if (res.ok) {
+        set((state) => ({
+          missions: state.missions.map((m) =>
+            m.id === id
+              ? { ...m, status: "planned" as const, completedAt: null }
+              : m
+          ),
+        }));
+      }
+    } catch {
+      // Error handled by UI
+    }
+  },
+
+  replanMission: async (id: string) => {
+    try {
+      const res = await fetch("/api/missions/replan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        const updated: Mission = await res.json();
+        set((state) => ({
+          missions: state.missions.map((m) =>
+            m.id === id ? updated : m
+          ),
+        }));
+      }
+    } catch {
+      // Error handled by UI
+    }
   },
 
   deleteMission: async (id: string) => {

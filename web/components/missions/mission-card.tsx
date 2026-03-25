@@ -27,7 +27,7 @@ const MissionPreviewMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-64 bg-muted animate-pulse rounded-md" />
+      <div className="h-[28rem] bg-muted animate-pulse rounded-md" />
     ),
   }
 );
@@ -203,7 +203,7 @@ export function MissionCard({
               {mission.pathPoints.length > 0 ? (
                 <MissionPreviewMap mission={mission} />
               ) : (
-                <div className="h-64 flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
+                <div className="h-[28rem] flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
                   Kein Pfad berechnet
                 </div>
               )}

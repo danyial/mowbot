@@ -21,7 +21,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
       const bounds = L.latLngBounds(
         points.map(([lat, lon]) => [lat, lon] as [number, number])
       );
-      map.fitBounds(bounds, { padding: [20, 20] });
+      map.fitBounds(bounds, { padding: [30, 30] });
       fitted.current = true;
     }
   }, [points, map]);
@@ -57,7 +57,7 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
     pathPoints.length > 0 ? pathPoints[0] : [48.2, 16.3];
 
   return (
-    <div className="h-64 w-full rounded-md overflow-hidden border border-border">
+    <div className="h-[28rem] w-full rounded-md overflow-hidden border border-border">
       <MapContainer
         center={defaultCenter}
         zoom={19}

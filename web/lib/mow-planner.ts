@@ -353,9 +353,12 @@ function extractPerimeterPoints(
       : [feature.geometry.coordinates];
 
   for (const coords of polygons) {
-    const ring = coords[0];
-    for (const [lon, lat] of ring) {
-      points.push([lat, lon]);
+    // All rings: outer ring (coords[0]) AND hole rings (coords[1..n])
+    // Holes represent exclusion zones — their perimeter must also be mowed
+    for (const ring of coords) {
+      for (const [lon, lat] of ring) {
+        points.push([lat, lon]);
+      }
     }
   }
   return points;

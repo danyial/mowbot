@@ -18,15 +18,18 @@
   #define ESC_RIGHT 1   // Channel 1
 #endif
 
+// Debug-LED (eingebaute LED auf den meisten ESP32 DevKits)
+#define LED_PIN 2
+
 // PWM Konfiguration für RC-ESCs
 // ESCs erwarten 50 Hz (20ms Periode)
 // 1000µs = volle Rückwärts, 1500µs = Stop, 2000µs = volle Vorwärts
 #define PWM_FREQ       50
 #define PWM_RESOLUTION 16   // 16-bit = 0-65535
 
-// Roboter-Parameter (anpassen!)
+// Roboter-Parameter
 #define WHEEL_SEPARATION 0.20  // Kettenabstand in Metern (ca. 20cm)
-#define MAX_SPEED        0.5   // max m/s (anpassen an deine Motoren)
+#define MAX_SPEED        0.5   // max m/s
 
 // micro-ROS Objekte
 rcl_subscription_t cmd_vel_sub;
@@ -40,9 +43,17 @@ rcl_node_t node;
 unsigned long last_cmd_time = 0;
 #define CMD_TIMEOUT_MS 500
 
+// Agent-Ping: nur alle 5 Sekunden statt jeden Loop-Durchlauf
+unsigned long last_ping_time = 0;
+#define PING_INTERVAL_MS 5000
+
 // micro-ROS Verbindungsstatus
 enum AgentState { WAITING_AGENT, AGENT_AVAILABLE, AGENT_CONNECTED, AGENT_DISCONNECTED };
 AgentState agent_state = WAITING_AGENT;
+
+// LED-Blink Status
+unsigned long last_led_toggle = 0;
+bool led_on = false;
 
 // µs → PWM Duty Cycle (16-bit bei 50 Hz)
 uint32_t us_to_duty(int microseconds) {
@@ -78,6 +89,9 @@ void cmd_vel_callback(const void* msgin) {
   set_esc(ESC_RIGHT, scale_right);
 
   last_cmd_time = millis();
+
+  // LED an wenn cmd_vel empfangen wird (Motoren aktiv)
+  digitalWrite(LED_PIN, HIGH);
 }
 
 bool create_microros_entities() {
@@ -109,10 +123,23 @@ void destroy_microros_entities() {
   rclc_support_fini(&support);
 }
 
+// LED blinken lassen mit variabler Geschwindigkeit
+void blink_led(unsigned long interval_ms) {
+  if (millis() - last_led_toggle >= interval_ms) {
+    led_on = !led_on;
+    digitalWrite(LED_PIN, led_on ? HIGH : LOW);
+    last_led_toggle = millis();
+  }
+}
+
 void setup() {
+  // Debug-LED
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
   Serial.begin(115200);
 
-  // PWM für ESCs konfigurieren (ESP32 Arduino Core 3.x API)
+  // PWM für ESCs konfigurieren
   #if ESP_ARDUINO_VERSION_MAJOR >= 3
   ledcAttach(ESC_LEFT, PWM_FREQ, PWM_RESOLUTION);
   ledcAttach(ESC_RIGHT, PWM_FREQ, PWM_RESOLUTION);
@@ -123,12 +150,11 @@ void setup() {
   ledcAttachPin(ESC_RIGHT_PIN, 1);
   #endif
 
-  // ESCs auf Neutral (1500µs)
+  // ESCs auf Neutral (1500µs) — 3 Sekunden warten für ESC-Initialisierung
+  // ESCs brauchen das Neutral-Signal beim Einschalten zur Kalibrierung
   set_esc(ESC_LEFT, 0.0f);
   set_esc(ESC_RIGHT, 0.0f);
-
-  // 2 Sekunden warten für ESC-Initialisierung
-  delay(2000);
+  delay(3000);
 
   // micro-ROS Transport (Serial)
   set_microros_serial_transports(Serial);
@@ -139,6 +165,9 @@ void setup() {
 void loop() {
   switch (agent_state) {
     case WAITING_AGENT:
+      // Langsames Blinken = Warte auf Agent
+      blink_led(1000);
+
       // Warte bis micro-ROS Agent erreichbar ist
       if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
         agent_state = AGENT_AVAILABLE;
@@ -149,16 +178,35 @@ void loop() {
       // Agent gefunden, Entities erstellen
       if (create_microros_entities()) {
         last_cmd_time = millis();
+        last_ping_time = millis();
         agent_state = AGENT_CONNECTED;
+        // Schnelles Blinken = verbunden
+        digitalWrite(LED_PIN, LOW);
       } else {
         agent_state = WAITING_AGENT;
       }
       break;
 
-    case AGENT_CONNECTED:
-      // Normaler Betrieb
-      if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
-        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+    case AGENT_CONNECTED: {
+      // Schnelles Blinken = verbunden, warte auf cmd_vel
+      // (LED wird auf HIGH gesetzt in cmd_vel_callback wenn Nachricht kommt)
+      if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {
+        // Kein cmd_vel seit Timeout → blinken statt Dauer-an
+        blink_led(250);
+      }
+
+      // Agent-Ping nur alle PING_INTERVAL_MS (nicht jeden Loop!)
+      // Der Ping blockiert bis zu 100ms und verhindert das Empfangen von Nachrichten
+      bool agent_ok = true;
+      if (millis() - last_ping_time >= PING_INTERVAL_MS) {
+        agent_ok = (rmw_uros_ping_agent(100, 3) == RMW_RET_OK);
+        last_ping_time = millis();
+      }
+
+      if (agent_ok) {
+        // Executor verarbeitet eingehende Nachrichten
+        // 100ms Spin-Time gibt dem Executor genug Zeit zum Empfangen
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
       } else {
         agent_state = AGENT_DISCONNECTED;
       }
@@ -169,6 +217,7 @@ void loop() {
         set_esc(ESC_RIGHT, 0.0f);
       }
       break;
+    }
 
     case AGENT_DISCONNECTED:
       // Motoren stoppen und aufräumen
@@ -176,6 +225,8 @@ void loop() {
       set_esc(ESC_RIGHT, 0.0f);
       destroy_microros_entities();
       agent_state = WAITING_AGENT;
+      // LED aus
+      digitalWrite(LED_PIN, LOW);
       break;
   }
 }

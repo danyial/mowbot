@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useState, useCallback } from "react";
 import {
   Play,
   Pause,
@@ -11,26 +12,29 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
+  Monitor,
 } from "lucide-react";
 import type { Mission } from "@/lib/types/mission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { useZoneStore } from "@/lib/store/zone-store";
-import { formatDuration, formatDistance, formatArea } from "@/lib/utils/formatting";
+import {
+  formatDuration,
+  formatDistance,
+  formatArea,
+} from "@/lib/utils/formatting";
 import { cn } from "@/lib/utils";
 
-const MissionPreviewMap = dynamic(
-  () => import("./mission-preview-map"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[28rem] bg-muted animate-pulse rounded-md" />
-    ),
-  }
-);
+const MissionPreviewMap = dynamic(() => import("./mission-preview-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[28rem] bg-muted animate-pulse rounded-md" />
+  ),
+});
 
 const statusLabels: Record<string, string> = {
   planned: "Geplant",
@@ -74,6 +78,13 @@ export function MissionCard({
   } = useMissionStore();
   const zones = useZoneStore((s) => s.zones);
 
+  // Simulation state
+  const [simulating, setSimulating] = useState(false);
+  const [simPaused, setSimPaused] = useState(false);
+  const [simSpeed, setSimSpeed] = useState(5);
+  const [simProgress, setSimProgress] = useState(0);
+  const [simTimeElapsed, setSimTimeElapsed] = useState(0);
+
   const isActive =
     mission.status === "running" || mission.status === "paused";
 
@@ -87,8 +98,41 @@ export function MissionCard({
         .filter(Boolean)
         .join(", ") || "Unbekannt";
 
+  const handleStartSim = () => {
+    setSimulating(true);
+    setSimPaused(false);
+    setSimProgress(0);
+    setSimTimeElapsed(0);
+    // Force expand
+    if (!expanded && onToggleExpand) {
+      onToggleExpand();
+    }
+  };
+
+  const handleStopSim = () => {
+    setSimulating(false);
+    setSimPaused(false);
+    setSimProgress(0);
+    setSimTimeElapsed(0);
+  };
+
+  const handleSimProgress = useCallback(
+    (progress: number, timeElapsed: number) => {
+      setSimProgress(progress);
+      setSimTimeElapsed(timeElapsed);
+    },
+    []
+  );
+
+  const handleSimEnd = useCallback(() => {
+    setSimPaused(true); // Pause at end so user can see the result
+  }, []);
+
+  // Force expanded when simulating
+  const isExpanded = expanded || simulating;
+
   return (
-    <Card className={cn(isActive && "border-primary/50")}>
+    <Card className={cn(isActive && "border-primary/50", simulating && "border-green-500/50")}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <button
@@ -99,12 +143,17 @@ export function MissionCard({
               {mission.name}
             </CardTitle>
             {onToggleExpand &&
-              (expanded ? (
+              (isExpanded ? (
                 <ChevronUp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               ) : (
                 <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               ))}
           </button>
+          {simulating && (
+            <Badge variant="success" className="mr-2">
+              Simulation
+            </Badge>
+          )}
           <Badge variant={statusVariant[mission.status]}>
             {statusLabels[mission.status]}
           </Badge>
@@ -141,7 +190,7 @@ export function MissionCard({
         )}
 
         {/* Expanded: Horizontal layout — Details left, Map right */}
-        {expanded && (
+        {isExpanded && (
           <div className="flex gap-3">
             {/* Left: Details */}
             <div className="w-2/5 flex-shrink-0 space-y-2 text-xs">
@@ -182,9 +231,7 @@ export function MissionCard({
                 </div>
                 <div>
                   <span className="text-muted-foreground">Winkel</span>
-                  <div className="font-medium">
-                    {mission.angle ?? 0}°
-                  </div>
+                  <div className="font-medium">{mission.angle ?? 0}°</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Versatz</span>
@@ -201,7 +248,14 @@ export function MissionCard({
             {/* Right: Map */}
             <div className="flex-1 min-w-0">
               {mission.pathPoints.length > 0 ? (
-                <MissionPreviewMap mission={mission} />
+                <MissionPreviewMap
+                  mission={mission}
+                  simulating={simulating}
+                  simSpeed={simSpeed}
+                  simPaused={simPaused}
+                  onSimProgress={handleSimProgress}
+                  onSimEnd={handleSimEnd}
+                />
               ) : (
                 <div className="h-[28rem] flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
                   Kein Pfad berechnet
@@ -211,114 +265,212 @@ export function MissionCard({
           </div>
         )}
 
+        {/* Simulation controls */}
+        {simulating && (
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+            {/* Progress bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Simulation {simProgress >= 1 ? "abgeschlossen" : ""}
+                </span>
+                <span>
+                  {formatDuration(simTimeElapsed)} /{" "}
+                  {formatDuration(mission.estimatedDuration)}
+                </span>
+              </div>
+              <Progress
+                value={simProgress * 100}
+                className="h-2"
+                indicatorClassName="bg-green-500"
+              />
+              <div className="text-right text-[10px] text-muted-foreground">
+                {Math.round(simProgress * 100)}%
+              </div>
+            </div>
+
+            {/* Controls row */}
+            <div className="flex items-center gap-2">
+              {simPaused ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSimPaused(false)}
+                >
+                  <Play className="h-3 w-3 mr-1" /> Weiter
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSimPaused(true)}
+                >
+                  <Pause className="h-3 w-3 mr-1" /> Pause
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleStopSim}
+              >
+                <Square className="h-3 w-3 mr-1" /> Stop
+              </Button>
+
+              {/* Speed slider */}
+              <div className="flex-1 flex items-center gap-2 ml-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {simSpeed}x
+                </span>
+                <Slider
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={[simSpeed]}
+                  onValueChange={([v]) => setSimSpeed(v)}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action buttons */}
-        <div className="flex gap-2 flex-wrap">
-          {mission.status === "planned" && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => startMission(mission.id)}
-              >
-                <Play className="h-3 w-3 mr-1" /> Starten
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => deleteMission(mission.id)}
-              >
-                <Trash2 className="h-3 w-3 mr-1" /> Loeschen
-              </Button>
-            </>
-          )}
+        {!simulating && (
+          <div className="flex gap-2 flex-wrap">
+            {mission.status === "planned" && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => startMission(mission.id)}
+                >
+                  <Play className="h-3 w-3 mr-1" /> Starten
+                </Button>
+                {mission.pathPoints.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleStartSim}
+                  >
+                    <Monitor className="h-3 w-3 mr-1" /> Simulieren
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => deleteMission(mission.id)}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+                </Button>
+              </>
+            )}
 
-          {mission.status === "running" && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => pauseMission(mission.id)}
-              >
-                <Pause className="h-3 w-3 mr-1" /> Pause
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => stopMission(mission.id)}
-              >
-                <Square className="h-3 w-3 mr-1" /> Stop
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={returnHome}
-              >
-                <Home className="h-3 w-3 mr-1" /> Home
-              </Button>
-            </>
-          )}
+            {mission.status === "running" && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => pauseMission(mission.id)}
+                >
+                  <Pause className="h-3 w-3 mr-1" /> Pause
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => stopMission(mission.id)}
+                >
+                  <Square className="h-3 w-3 mr-1" /> Stop
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={returnHome}
+                >
+                  <Home className="h-3 w-3 mr-1" /> Home
+                </Button>
+              </>
+            )}
 
-          {mission.status === "paused" && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => resumeMission(mission.id)}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" /> Fortsetzen
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => stopMission(mission.id)}
-              >
-                <Square className="h-3 w-3 mr-1" /> Stop
-              </Button>
-            </>
-          )}
+            {mission.status === "paused" && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => resumeMission(mission.id)}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" /> Fortsetzen
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => stopMission(mission.id)}
+                >
+                  <Square className="h-3 w-3 mr-1" /> Stop
+                </Button>
+              </>
+            )}
 
-          {mission.status === "aborted" && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => resumeAbortedMission(mission.id)}
-              >
-                <Play className="h-3 w-3 mr-1" /> Weitermachen
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => replanMission(mission.id)}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" /> Neu planen
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => deleteMission(mission.id)}
-              >
-                <Trash2 className="h-3 w-3 mr-1" /> Loeschen
-              </Button>
-            </>
-          )}
+            {mission.status === "aborted" && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => resumeAbortedMission(mission.id)}
+                >
+                  <Play className="h-3 w-3 mr-1" /> Weitermachen
+                </Button>
+                {mission.pathPoints.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleStartSim}
+                  >
+                    <Monitor className="h-3 w-3 mr-1" /> Simulieren
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => replanMission(mission.id)}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" /> Neu planen
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => deleteMission(mission.id)}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+                </Button>
+              </>
+            )}
 
-          {mission.status === "completed" && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => replanMission(mission.id)}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" /> Neu planen
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => deleteMission(mission.id)}
-              >
-                <Trash2 className="h-3 w-3 mr-1" /> Loeschen
-              </Button>
-            </>
-          )}
-        </div>
+            {mission.status === "completed" && (
+              <>
+                {mission.pathPoints.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleStartSim}
+                  >
+                    <Monitor className="h-3 w-3 mr-1" /> Simulieren
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => replanMission(mission.id)}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" /> Neu planen
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => deleteMission(mission.id)}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Loeschen
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

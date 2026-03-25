@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Polyline, Polygon, useMap } from "react-leaflet";
+import { useEffect, useRef, useCallback, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Polyline,
+  Polygon,
+  Marker,
+  useMap,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LatLngExpression } from "leaflet";
 import L from "leaflet";
@@ -9,9 +16,10 @@ import type { Mission } from "@/lib/types/mission";
 import { useZoneStore } from "@/lib/store/zone-store";
 import { ZONE_TYPE_CONFIG } from "@/lib/types/zones";
 
-/**
- * Auto-fit the map to the path bounds
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// FitBounds helper
+// ─────────────────────────────────────────────────────────────────────────────
+
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   const fitted = useRef(false);
@@ -29,14 +37,277 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
-interface MissionPreviewMapProps {
-  mission: Mission;
+// ─────────────────────────────────────────────────────────────────────────────
+// Simulation layer
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Pre-compute cumulative distances along a path for efficient interpolation.
+ */
+function computeCumulativeDistances(points: [number, number][]): number[] {
+  const dists = [0];
+  for (let i = 1; i < points.length; i++) {
+    const [lat1, lon1] = points[i - 1];
+    const [lat2, lon2] = points[i];
+    // Approximate distance in meters using equirectangular projection
+    const dLat = (lat2 - lat1) * 111320;
+    const dLon =
+      (lon2 - lon1) * 111320 * Math.cos(((lat1 + lat2) / 2) * (Math.PI / 180));
+    const segDist = Math.sqrt(dLat * dLat + dLon * dLon);
+    dists.push(dists[i - 1] + segDist);
+  }
+  return dists;
 }
 
-export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
+/**
+ * Interpolate a position along the path at a given distance.
+ */
+function interpolatePosition(
+  points: [number, number][],
+  cumDists: number[],
+  distance: number
+): { position: [number, number]; heading: number; segmentIndex: number } {
+  const totalDist = cumDists[cumDists.length - 1];
+  const clampedDist = Math.min(distance, totalDist);
+
+  // Find the segment
+  let segIdx = 0;
+  for (let i = 1; i < cumDists.length; i++) {
+    if (cumDists[i] >= clampedDist) {
+      segIdx = i - 1;
+      break;
+    }
+    segIdx = i - 1;
+  }
+
+  const segStart = cumDists[segIdx];
+  const segEnd = cumDists[segIdx + 1] || segStart;
+  const segLen = segEnd - segStart;
+  const t = segLen > 0 ? (clampedDist - segStart) / segLen : 0;
+
+  const [lat1, lon1] = points[segIdx];
+  const [lat2, lon2] = points[segIdx + 1] || points[segIdx];
+
+  const lat = lat1 + (lat2 - lat1) * t;
+  const lon = lon1 + (lon2 - lon1) * t;
+
+  // Heading in degrees (0 = North, 90 = East)
+  const dLon = lon2 - lon1;
+  const dLat = lat2 - lat1;
+  const heading =
+    (Math.atan2(dLon, dLat) * (180 / Math.PI) + 360) % 360;
+
+  return { position: [lat, lon], heading, segmentIndex: segIdx };
+}
+
+/**
+ * Create a directional robot marker icon.
+ */
+function createRobotIcon(heading: number): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    html: `<div style="
+      width: 20px;
+      height: 20px;
+      position: relative;
+    ">
+      <div style="
+        width: 16px;
+        height: 16px;
+        background: #22c55e;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        position: absolute;
+        top: 2px;
+        left: 2px;
+      "></div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-bottom: 8px solid #22c55e;
+        position: absolute;
+        top: -5px;
+        left: 5px;
+        transform-origin: center 15px;
+        transform: rotate(${heading}deg);
+        filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
+      "></div>
+    </div>`,
+  });
+}
+
+interface SimulationLayerProps {
+  pathPoints: [number, number][];
+  speed: number; // mission speed in m/s
+  simSpeed: number; // simulation multiplier (1-10)
+  paused: boolean;
+  onProgress: (progress: number, timeElapsed: number) => void;
+  onEnd: () => void;
+}
+
+function SimulationLayer({
+  pathPoints,
+  speed,
+  simSpeed,
+  paused,
+  onProgress,
+  onEnd,
+}: SimulationLayerProps) {
+  const markerRef = useRef<L.Marker>(null);
+  const distanceTraveled = useRef(0);
+  const lastTimestamp = useRef<number | null>(null);
+  const animFrameId = useRef<number>(0);
+  const [trail, setTrail] = useState<LatLngExpression[]>([]);
+  const [markerPos, setMarkerPos] = useState<[number, number]>(pathPoints[0]);
+  const [heading, setHeading] = useState(0);
+
+  const cumDists = useRef(computeCumulativeDistances(pathPoints));
+  const totalDistance = cumDists.current[cumDists.current.length - 1];
+
+  // Store latest values in refs for the animation loop
+  const simSpeedRef = useRef(simSpeed);
+  const pausedRef = useRef(paused);
+  const onProgressRef = useRef(onProgress);
+  const onEndRef = useRef(onEnd);
+
+  useEffect(() => {
+    simSpeedRef.current = simSpeed;
+  }, [simSpeed]);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+  useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
+
+  // Animation loop
+  useEffect(() => {
+    distanceTraveled.current = 0;
+    lastTimestamp.current = null;
+    setTrail([[pathPoints[0][0], pathPoints[0][1]]]);
+    setMarkerPos(pathPoints[0]);
+
+    function tick(timestamp: number) {
+      if (lastTimestamp.current === null) {
+        lastTimestamp.current = timestamp;
+        animFrameId.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      if (!pausedRef.current) {
+        const deltaMs = timestamp - lastTimestamp.current;
+        const deltaSec = deltaMs / 1000;
+        const simDelta = deltaSec * simSpeedRef.current;
+        const distDelta = speed * simDelta;
+
+        distanceTraveled.current += distDelta;
+
+        if (distanceTraveled.current >= totalDistance) {
+          // Simulation ended
+          distanceTraveled.current = totalDistance;
+          const endPos = pathPoints[pathPoints.length - 1];
+          setMarkerPos(endPos);
+          setTrail(
+            pathPoints.map(([lat, lon]) => [lat, lon] as LatLngExpression)
+          );
+          onProgressRef.current(1, totalDistance / speed);
+          onEndRef.current();
+          return;
+        }
+
+        const { position, heading: h } = interpolatePosition(
+          pathPoints,
+          cumDists.current,
+          distanceTraveled.current
+        );
+
+        setMarkerPos(position);
+        setHeading(h);
+        setTrail((prev) => [...prev, [position[0], position[1]]]);
+
+        const progress = distanceTraveled.current / totalDistance;
+        const timeElapsed = distanceTraveled.current / speed;
+        onProgressRef.current(progress, timeElapsed);
+      }
+
+      lastTimestamp.current = timestamp;
+      animFrameId.current = requestAnimationFrame(tick);
+    }
+
+    animFrameId.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animFrameId.current) {
+        cancelAnimationFrame(animFrameId.current);
+      }
+    };
+  }, [pathPoints, speed, totalDistance]);
+
+  // Update marker icon when heading changes (throttled via useMemo-like approach)
+  const icon = useRef(createRobotIcon(0));
+  useEffect(() => {
+    icon.current = createRobotIcon(heading);
+    if (markerRef.current) {
+      markerRef.current.setIcon(icon.current);
+    }
+  }, [Math.round(heading / 5) * 5]); // Update every 5 degrees
+
+  return (
+    <>
+      {/* Trail (already driven) */}
+      {trail.length >= 2 && (
+        <Polyline
+          positions={trail}
+          pathOptions={{
+            color: "#22c55e",
+            weight: 3,
+            opacity: 0.9,
+          }}
+        />
+      )}
+
+      {/* Robot marker */}
+      <Marker
+        ref={markerRef}
+        position={markerPos}
+        icon={icon.current}
+        interactive={false}
+      />
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MissionPreviewMapProps {
+  mission: Mission;
+  simulating?: boolean;
+  simSpeed?: number;
+  simPaused?: boolean;
+  onSimProgress?: (progress: number, timeElapsed: number) => void;
+  onSimEnd?: () => void;
+}
+
+export default function MissionPreviewMap({
+  mission,
+  simulating = false,
+  simSpeed = 1,
+  simPaused = false,
+  onSimProgress,
+  onSimEnd,
+}: MissionPreviewMapProps) {
   const zones = useZoneStore((s) => s.zones);
 
-  // Get the zones assigned to this mission
   const isAll = mission.zoneIds.length === 1 && mission.zoneIds[0] === "all";
   const missionZones = isAll
     ? zones.filter(
@@ -51,10 +322,20 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
       z.geometry.type === "Polygon" && z.properties.zoneType === "exclusion"
   );
 
-  // Use path center or fallback
   const pathPoints = mission.pathPoints;
   const defaultCenter: [number, number] =
     pathPoints.length > 0 ? pathPoints[0] : [48.2, 16.3];
+
+  const handleSimProgress = useCallback(
+    (progress: number, timeElapsed: number) => {
+      onSimProgress?.(progress, timeElapsed);
+    },
+    [onSimProgress]
+  );
+
+  const handleSimEnd = useCallback(() => {
+    onSimEnd?.();
+  }, [onSimEnd]);
 
   return (
     <div className="h-[28rem] w-full rounded-md overflow-hidden border border-border">
@@ -120,7 +401,7 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
           );
         })}
 
-        {/* Planned path */}
+        {/* Planned path — dimmed during simulation */}
         {pathPoints.length >= 2 && (
           <Polyline
             positions={pathPoints.map(
@@ -129,13 +410,13 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
             pathOptions={{
               color: "#3b82f6",
               weight: 2,
-              opacity: 0.7,
+              opacity: simulating ? 0.2 : 0.7,
             }}
           />
         )}
 
-        {/* Completed path */}
-        {mission.completedPoints.length >= 2 && (
+        {/* Completed path (from real execution, not simulation) */}
+        {!simulating && mission.completedPoints.length >= 2 && (
           <Polyline
             positions={mission.completedPoints.map(
               ([lat, lon]) => [lat, lon] as LatLngExpression
@@ -145,6 +426,18 @@ export default function MissionPreviewMap({ mission }: MissionPreviewMapProps) {
               weight: 3,
               opacity: 0.9,
             }}
+          />
+        )}
+
+        {/* Simulation layer */}
+        {simulating && pathPoints.length >= 2 && (
+          <SimulationLayer
+            pathPoints={pathPoints}
+            speed={mission.speed}
+            simSpeed={simSpeed}
+            paused={simPaused}
+            onProgress={handleSimProgress}
+            onEnd={handleSimEnd}
           />
         )}
 

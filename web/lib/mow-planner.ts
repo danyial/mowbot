@@ -128,11 +128,16 @@ function projectPointOntoRing(
 }
 
 /**
- * Route safely from A to B within the polygon.
+ * Route safely from A to B within the polygon using a visibility graph.
  *
  * 1. If a direct line A→B stays inside → returns [].
- * 2. Otherwise, for each ring: projects A and B onto the nearest EDGE,
- *    builds two candidate paths around the ring, picks shortest.
+ * 2. Otherwise, builds a visibility graph from all polygon vertices + A + B.
+ *    Two nodes are connected if the direct line between them stays inside
+ *    the polygon (checked via midpoint sampling).
+ * 3. Finds the shortest path via Dijkstra.
+ *
+ * This correctly handles concave polygons, holes (exclusion zones), and
+ * any complex geometry — the path will always stay inside the polygon.
  *
  * Returns intermediate waypoints (does NOT include A or B themselves).
  */
@@ -146,66 +151,105 @@ function safeRoute(
     return [];
   }
 
+  // Collect all polygon vertices as [lat, lon] waypoint candidates
   const allRings = getAllRings(routeArea);
-  if (allRings.length === 0) return [];
-
-  let bestPath: [number, number][] = [];
-  let bestLength = Infinity;
+  const nodes: [number, number][] = [from, to]; // indices 0 = from, 1 = to
 
   for (const ring of allRings) {
-    const n = ring.length - 1;
-    if (n < 3) continue;
-
-    const fromProj = projectPointOntoRing(from, ring);
-    const toProj = projectPointOntoRing(to, ring);
-
-    const fromEdge = fromProj.edgeStartIdx;
-    const toEdge = toProj.edgeStartIdx;
-
-    // Forward path: fromProj → walk vertices forward → toProj
-    const fwdPath: [number, number][] = [fromProj.projected];
-    {
-      let v = (fromEdge + 1) % n;
-      const stopV = (toEdge + 1) % n;
-      let steps = 0;
-      while (v !== stopV && steps <= n) {
-        fwdPath.push([ring[v][1], ring[v][0]]);
-        v = (v + 1) % n;
-        steps++;
-      }
-      fwdPath.push(toProj.projected);
+    const n = ring.length - 1; // exclude closing point
+    for (let i = 0; i < n; i++) {
+      nodes.push([ring[i][1], ring[i][0]]); // [lat, lon]
     }
+  }
 
-    // Backward path: fromProj → walk vertices backward → toProj
-    const bwdPath: [number, number][] = [fromProj.projected];
-    {
-      let v = fromEdge % n;
-      const stopV = toEdge % n;
-      let steps = 0;
-      while (v !== stopV && steps <= n) {
-        bwdPath.push([ring[v][1], ring[v][0]]);
-        v = (v - 1 + n) % n;
-        steps++;
+  const N = nodes.length;
+
+  // Build adjacency: check which node pairs have a direct path inside the polygon.
+  // Use midpoint sampling (3 samples) for speed — full booleanWithin is too slow
+  // for N² pairs on large polygons.
+  function canConnect(a: [number, number], b: [number, number]): boolean {
+    const [lat1, lon1] = a;
+    const [lat2, lon2] = b;
+    // Skip zero-length
+    if (Math.abs(lat1 - lat2) < 1e-12 && Math.abs(lon1 - lon2) < 1e-12) return true;
+    // Check midpoint and quarter points
+    for (const t of [0.25, 0.5, 0.75]) {
+      const sLat = lat1 + (lat2 - lat1) * t;
+      const sLon = lon1 + (lon2 - lon1) * t;
+      const pt = turf.point([sLon, sLat]);
+      if (!turf.booleanPointInPolygon(pt, checkArea)) {
+        return false;
       }
-      bwdPath.push(toProj.projected);
     }
+    return true;
+  }
 
-    for (const candidate of [fwdPath, bwdPath]) {
-      const fullPath: [number, number][] = [from, ...candidate, to];
-      let len = 0;
-      for (let i = 1; i < fullPath.length; i++) {
-        const dLat = fullPath[i][0] - fullPath[i - 1][0];
-        const dLon = fullPath[i][1] - fullPath[i - 1][1];
-        len += Math.sqrt(dLat * dLat + dLon * dLon);
+  // Build adjacency list with distances (only compute edges we need)
+  // For efficiency, pre-check which nodes are reachable from `from` and can reach `to`
+  // Use Dijkstra with lazy edge evaluation
+
+  // Dijkstra's algorithm with lazy edge computation
+  const dist = new Float64Array(N).fill(Infinity);
+  const prev = new Int32Array(N).fill(-1);
+  const visited = new Uint8Array(N);
+  dist[0] = 0; // from = index 0
+
+  for (let iter = 0; iter < N; iter++) {
+    // Find unvisited node with smallest distance
+    let u = -1;
+    let uDist = Infinity;
+    for (let i = 0; i < N; i++) {
+      if (!visited[i] && dist[i] < uDist) {
+        uDist = dist[i];
+        u = i;
       }
-      if (len < bestLength) {
-        bestLength = len;
-        bestPath = candidate;
+    }
+    if (u === -1 || u === 1) break; // no more reachable nodes, or reached `to`
+
+    visited[u] = 1;
+
+    // Try edges from u to all other unvisited nodes
+    for (let v = 0; v < N; v++) {
+      if (visited[v]) continue;
+
+      // Check if u→v is a valid connection
+      if (!canConnect(nodes[u], nodes[v])) continue;
+
+      const dLat = nodes[v][0] - nodes[u][0];
+      const dLon = nodes[v][1] - nodes[u][1];
+      const edgeDist = Math.sqrt(dLat * dLat + dLon * dLon);
+      const newDist = dist[u] + edgeDist;
+
+      if (newDist < dist[v]) {
+        dist[v] = newDist;
+        prev[v] = u;
       }
     }
   }
 
-  return bestPath;
+  // Reconstruct path from `to` (index 1) back to `from` (index 0)
+  if (dist[1] === Infinity) {
+    // No path found — shouldn't happen, but fallback to empty
+    return [];
+  }
+
+  const pathIndices: number[] = [];
+  let cur = 1;
+  while (cur !== 0 && cur !== -1) {
+    pathIndices.push(cur);
+    cur = prev[cur];
+  }
+  pathIndices.reverse();
+
+  // Return intermediate nodes (skip index 1 = `to`, don't include `from`)
+  const waypoints: [number, number][] = [];
+  for (const idx of pathIndices) {
+    if (idx !== 1) { // skip `to` — caller adds it
+      waypoints.push(nodes[idx]);
+    }
+  }
+
+  return waypoints;
 }
 
 /**

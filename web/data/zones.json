@@ -139,6 +139,29 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "id": "zone-1774444528962-5houg",
+      "properties": {
+        "name": "Ausfahrt",
+        "zoneType": "dockPath",
+        "createdAt": "2026-03-25T13:15:28.962Z",
+        "updatedAt": "2026-03-25T13:15:28.962Z"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            11.315421257168056,
+            48.159101056970975
+          ],
+          [
+            11.315399464219809,
+            48.159100497844015
+          ]
+        ]
+      }
     }
   ]
 }

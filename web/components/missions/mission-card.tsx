@@ -356,6 +356,13 @@ export function MissionCard({
                 )}
                 <Button
                   size="sm"
+                  variant="secondary"
+                  onClick={() => replanMission(mission.id)}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" /> Neu planen
+                </Button>
+                <Button
+                  size="sm"
                   variant="destructive"
                   onClick={() => deleteMission(mission.id)}
                 >

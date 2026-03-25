@@ -60,9 +60,19 @@ uint32_t us_to_duty(int microseconds) {
   return (uint32_t)((float)microseconds / 20000.0f * 65535.0f);
 }
 
+// ESC-Totzone überspringen: RC-Auto ESCs ignorieren kleine Werte um Neutral.
+// Mappe den Eingangsbereich (5%-100%) auf den ESC-Bereich (15%-100%),
+// sodass selbst kleine Joystick-Bewegungen den Motor aktivieren.
+float apply_deadzone(float value) {
+  if (fabs(value) < 0.05f) return 0.0f;  // Unter 5% → stopp
+  float sign = (value > 0.0f) ? 1.0f : -1.0f;
+  return sign * (0.15f + fabs(value) * 0.85f);
+}
+
 // Geschwindigkeit (-1.0 bis +1.0) → ESC PWM (1000-2000µs)
 void set_esc(int pin_or_channel, float speed) {
   speed = constrain(speed, -1.0f, 1.0f);
+  speed = apply_deadzone(speed);
   int pulse_us = 1500 + (int)(speed * 500.0f);
   ledcWrite(pin_or_channel, us_to_duty(pulse_us));
 }
@@ -160,9 +170,9 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
   delay(200);
 
-  // 10% vorwärts für 500ms
-  set_esc(ESC_LEFT, 0.1f);
-  set_esc(ESC_RIGHT, 0.1f);
+  // 30% vorwärts für 500ms (muss über der ESC-Totzone von ~10-15% liegen)
+  set_esc(ESC_LEFT, 0.3f);
+  set_esc(ESC_RIGHT, 0.3f);
   digitalWrite(LED_PIN, HIGH);  // LED an während Impuls
   delay(500);
 

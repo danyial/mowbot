@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import * as turf from "@turf/turf";
 import type { Zone, ZoneCollection } from "@/lib/types/zones";
+import { isLineZoneType } from "@/lib/types/zones";
 
 const ZONES_FILE = path.join(process.cwd(), "data", "zones.json");
 
@@ -82,7 +83,7 @@ function validatePolygon(
  * GeoJSON uses [longitude, latitude] order.
  * Input points are [latitude, longitude] (Leaflet convention).
  */
-function pointsToGeoJSON(
+function pointsToGeoJSONPolygon(
   points: [number, number][]
 ): number[][][] {
   const ring = points.map(([lat, lon]) => [lon, lat]);
@@ -95,6 +96,12 @@ function pointsToGeoJSON(
     ring.push([...ring[0]]);
   }
   return [ring];
+}
+
+function pointsToGeoJSONLineString(
+  points: [number, number][]
+): number[][] {
+  return points.map(([lat, lon]) => [lon, lat]);
 }
 
 /**
@@ -140,8 +147,9 @@ export async function POST(request: Request) {
       );
     }
 
-    let geomType: "Polygon" | "Point" = "Polygon";
-    let geomCoordinates: number[][][] | number[];
+    const isLine = isLineZoneType(zoneType);
+    let geomType: "Polygon" | "LineString" | "Point" = isLine ? "LineString" : "Polygon";
+    let geomCoordinates: number[][][] | number[][] | number[];
 
     if (zoneType === "dock" && body.position) {
       // Dock zone is a Point
@@ -151,17 +159,21 @@ export async function POST(request: Request) {
     } else if (coordinates) {
       // GeoJSON coordinates provided directly
       geomCoordinates = coordinates;
-    } else if (points && Array.isArray(points) && points.length >= 3) {
-      // Convert Leaflet [lat, lon] points to GeoJSON
-      geomCoordinates = pointsToGeoJSON(points);
+    } else if (isLine && points && Array.isArray(points) && points.length >= 2) {
+      // LineString: Convert Leaflet [lat, lon] points to GeoJSON LineString
+      geomCoordinates = pointsToGeoJSONLineString(points);
+    } else if (!isLine && points && Array.isArray(points) && points.length >= 3) {
+      // Polygon: Convert Leaflet [lat, lon] points to GeoJSON Polygon
+      geomCoordinates = pointsToGeoJSONPolygon(points);
     } else {
+      const minPoints = isLine ? 2 : 3;
       return NextResponse.json(
-        { error: "Mindestens 3 Punkte erforderlich" },
+        { error: `Mindestens ${minPoints} Punkte erforderlich` },
         { status: 400 }
       );
     }
 
-    // Validate polygon geometry
+    // Validate polygon geometry (skip for LineString and Point)
     if (geomType === "Polygon") {
       const validation = validatePolygon(
         geomCoordinates as number[][][]
@@ -245,7 +257,11 @@ export async function PUT(request: Request) {
 
     // Update coordinates if points or coordinates provided
     if (updates.points) {
-      existing.geometry.coordinates = pointsToGeoJSON(updates.points);
+      if (existing.geometry.type === "LineString") {
+        existing.geometry.coordinates = pointsToGeoJSONLineString(updates.points);
+      } else {
+        existing.geometry.coordinates = pointsToGeoJSONPolygon(updates.points);
+      }
       delete updates.points;
     } else if (updates.coordinates) {
       existing.geometry.coordinates = updates.coordinates;

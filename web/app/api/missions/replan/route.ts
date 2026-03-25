@@ -22,19 +22,35 @@ async function writeMissions(missions: Mission[]) {
   await fs.writeFile(DATA_FILE, JSON.stringify(missions, null, 2), "utf-8");
 }
 
-async function readRobotConfig(): Promise<{ edgeClearance: number; robotWidth: number }> {
+async function readRobotConfig(): Promise<{
+  edgeClearance: number;
+  robotWidth: number;
+  dockExitDistance: number;
+}> {
   try {
     const data = await fs.readFile(CONFIG_FILE, "utf-8");
     const config = JSON.parse(data);
     const ec = config?.robot?.edgeClearance;
     const rw = config?.robot?.robotWidth;
+    const ded = config?.robot?.dockExitDistance;
     return {
       edgeClearance: (typeof ec === "number" && ec >= 0) ? ec / 100 : 0.1,
       robotWidth: (typeof rw === "number" && rw > 0) ? rw / 100 : 0.35,
+      dockExitDistance: (typeof ded === "number" && ded > 0) ? ded / 100 : 1.5,
     };
   } catch {
-    return { edgeClearance: 0.1, robotWidth: 0.35 };
+    return { edgeClearance: 0.1, robotWidth: 0.35, dockExitDistance: 1.5 };
   }
+}
+
+function extractDockPath(zones: import("@/lib/types/zones").ZoneCollection): [number, number][] | undefined {
+  const dockPathZone = zones.features.find(
+    (z) => z.properties.zoneType === "dockPath" && z.geometry.type === "LineString"
+  );
+  if (!dockPathZone) return undefined;
+  const coords = dockPathZone.geometry.coordinates as number[][];
+  if (coords.length < 2) return undefined;
+  return coords.map(([lon, lat]) => [lat, lon] as [number, number]);
 }
 
 async function readZones(): Promise<ZoneCollection> {
@@ -110,11 +126,11 @@ export async function POST(request: Request) {
       )
       .map((z) => z.geometry.coordinates as number[][][]);
 
-    // Re-generate path with new angle, using existing startPoint
-    // Use edgeClearance/robotWidth from mission (if saved) or from current config
+    // Re-generate path with new angle
     const configDefaults = await readRobotConfig();
     const edgeClearance = mission.edgeClearance ?? configDefaults.edgeClearance;
     const robotWidth = mission.robotWidth ?? configDefaults.robotWidth;
+    const dockPath = extractDockPath(zones);
     const planResult = generateMowPath({
       zonePolygons: mowPolygons,
       exclusionPolygons,
@@ -126,6 +142,8 @@ export async function POST(request: Request) {
       startPoint: mission.startPoint,
       edgeClearance,
       robotWidth,
+      dockPath,
+      dockExitDistance: configDefaults.dockExitDistance,
     });
 
     // Update mission

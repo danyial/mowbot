@@ -10,6 +10,7 @@ import {
   Scissors,
   ArrowRightLeft,
   BatteryCharging,
+  MoveRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useZoneStore } from "@/lib/store/zone-store";
@@ -24,6 +25,7 @@ const ZONE_TYPE_ICONS: Record<ZoneType, typeof Fence> = {
   exclusion: TreePine,
   corridor: ArrowRightLeft,
   dock: BatteryCharging,
+  dockPath: MoveRight,
 };
 
 /**

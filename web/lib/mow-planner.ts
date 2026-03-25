@@ -233,6 +233,10 @@ export function generateMowPath(params: {
   edgeClearance?: number;
   /** Robot width in meters — used to calculate center-to-edge offset. */
   robotWidth?: number;
+  /** Dock exit/entry path [[lat, lon], ...] — from dock exit to garden entry */
+  dockPath?: [number, number][];
+  /** Distance in meters the robot drives blind (backward) to exit dock */
+  dockExitDistance?: number;
 }): PlanResult {
   const {
     zonePolygons,
@@ -242,7 +246,6 @@ export function generateMowPath(params: {
     perimeterPasses,
     angle,
     speed,
-    startPoint,
   } = params;
 
   const emptyResult: PlanResult = {
@@ -265,6 +268,15 @@ export function generateMowPath(params: {
   const robotHalfWidth = (params.robotWidth ?? 0.35) / 2;
   const safetyMargin = edgeClearance + robotHalfWidth;
 
+  // Resolve dock path and effective start point
+  const { dockPath, dockExitDistance, startPoint } = params;
+
+  // Effective start for mow planning = last point of dock path (garden entry)
+  // or startPoint (dock centroid / GPS) if no dock path
+  const effectiveStartPoint = dockPath && dockPath.length >= 2
+    ? dockPath[dockPath.length - 1]
+    : startPoint;
+
   // 1. Build the mow area: union all zone polygons
   let mowArea: Feature<Polygon | MultiPolygon> = turf.polygon(zonePolygons[0]);
   for (let i = 1; i < zonePolygons.length; i++) {
@@ -276,6 +288,10 @@ export function generateMowPath(params: {
       // Skip invalid polygons
     }
   }
+
+  // Save original area before safety buffer (needed for start/return routing
+  // because dock/startPoint may lie outside the buffered mowArea)
+  const originalArea = mowArea;
 
   // 2. Apply safety margin: shrink mow area by half the mow width
   const safeArea = turf.buffer(mowArea, -safetyMargin / 1000, {
@@ -340,18 +356,32 @@ export function generateMowPath(params: {
   }
 
   // Build mow points: outer passes first, then each hole's passes
+  // with safe connections between perimeter groups
   const mowPoints: [number, number][] = [];
+  const perimeterGroups: [number, number][][] = [];
 
-  // All outer perimeter passes consecutively
-  for (const ring of outerPassRings) {
-    mowPoints.push(...ring);
+  // Outer passes as one group
+  if (outerPassRings.length > 0) {
+    perimeterGroups.push(outerPassRings.flat());
   }
 
-  // All hole perimeter passes, grouped by hole
+  // Each hole's passes as a separate group
   for (const [, passes] of holePassGroups) {
-    for (const ring of passes) {
-      mowPoints.push(...ring);
+    perimeterGroups.push(passes.flat());
+  }
+
+  // Connect perimeter groups with safe paths
+  for (let g = 0; g < perimeterGroups.length; g++) {
+    const group = perimeterGroups[g];
+    if (g > 0 && mowPoints.length > 0) {
+      const from = mowPoints[mowPoints.length - 1];
+      const to = group[0];
+      if (!isDirectPathInside(from, to, mowArea)) {
+        const waypoints = findBestPerimeterPath(from, to, mowArea);
+        mowPoints.push(...waypoints);
+      }
     }
+    mowPoints.push(...group);
   }
 
   // Shrink inner area to where stripes begin
@@ -363,7 +393,7 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
-      const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, mowArea);
+      const allPoints = addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, originalArea, speed);
       return buildResult(allPoints, speed, 0, totalArea, 0);
     }
   }
@@ -371,10 +401,7 @@ export function generateMowPath(params: {
   const innerAreaSqm = turf.area(innerAreaFeature);
   const perimeterAreaSqm = Math.max(0, totalArea - innerAreaSqm);
 
-  // 5. Generate parallel stripes with safe connections between them
-  //    checkArea = mowArea (for isDirectPathInside — full mow polygon)
-  //    routeArea = innerAreaFeature (for findBestPerimeterPath — routes along
-  //    innermost perimeter rings, keeping same clearance as perimeter passes)
+  // 5. Generate parallel stripes with safe connections
   const lastPoint =
     mowPoints.length > 0 ? mowPoints[mowPoints.length - 1] : undefined;
 
@@ -382,17 +409,16 @@ export function generateMowPath(params: {
     innerAreaFeature,
     effectiveSpacing,
     angle,
-    mowArea,          // checkArea: is direct path inside?
-    innerAreaFeature,  // routeArea: route along these rings
+    mowArea,   // checkArea
+    mowArea,   // routeArea — use full mow area for routing
     lastPoint
   );
   mowPoints.push(...stripePoints);
 
   const turns = Math.max(0, stripeCount - 1);
 
-  // 6. Add start/return path from dock or GPS position
-  //    Route via innerAreaFeature rings for consistent clearance
-  const allPoints = addStartReturnPaths(startPoint, mowPoints, mowArea, innerAreaFeature);
+  // 6. Add dock exit/entry paths and start/return connection
+  const allPoints = addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, originalArea, speed);
 
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm);
 }
@@ -402,41 +428,70 @@ export function generateMowPath(params: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Prepend a path from startPoint to the first mow point, and append
- * a return path from the last mow point back to startPoint.
+ * Add dock exit/entry paths around the mow points.
  *
- * @param checkArea Polygon for isDirectPathInside (full mow area)
- * @param routeArea Polygon whose rings are used for perimeter routing
- *                  (innerAreaFeature — keeps same clearance as perimeter passes)
+ * Full sequence:
+ *   [dock blind exit] → dockPath → startPoint→firstMow connection → mowPoints →
+ *   lastMow→startPoint connection → dockPath reversed → [dock blind entry]
+ *
+ * The blind exit/entry (dockExitDistance) is represented as a dashed
+ * segment from the dock zone centroid to the first dockPath point.
+ *
+ * @param dockPath The drawn dock exit path [[lat, lon], ...]
+ * @param dockExitDistance Blind reverse distance in meters (for duration calc)
+ * @param startPoint Effective start = last dockPath point or dock centroid
+ * @param mowPoints The mowing waypoints
+ * @param originalArea Original garden polygon (before safety buffer) for routing
+ * @param speed Robot speed for duration calculation
  */
-function addStartReturnPaths(
+function addDockPaths(
+  dockPath: [number, number][] | undefined,
+  dockExitDistance: number | undefined,
   startPoint: [number, number] | undefined,
   mowPoints: [number, number][],
-  checkArea: Feature<Polygon | MultiPolygon>,
-  routeArea: Feature<Polygon | MultiPolygon>
+  originalArea: Feature<Polygon | MultiPolygon>,
+  speed: number
 ): [number, number][] {
-  if (!startPoint || mowPoints.length === 0) return mowPoints;
+  if (mowPoints.length === 0) return mowPoints;
 
   const result: [number, number][] = [];
 
-  // Start: startPoint → first mow point
-  result.push(startPoint);
-  const firstMow = mowPoints[0];
-  if (!isDirectPathInside(startPoint, firstMow, checkArea)) {
-    const waypoints = findBestPerimeterPath(startPoint, firstMow, routeArea);
-    result.push(...waypoints);
+  // --- Exit: Dock → Garden ---
+  if (dockPath && dockPath.length >= 2) {
+    // Dock exit path (includes blind exit segment visually)
+    result.push(...dockPath);
+  } else if (startPoint) {
+    result.push(startPoint);
+  }
+
+  // Connection from start point to first mow point
+  if (startPoint && mowPoints.length > 0) {
+    const firstMow = mowPoints[0];
+    const from = result.length > 0 ? result[result.length - 1] : startPoint;
+    if (!isDirectPathInside(from, firstMow, originalArea)) {
+      const waypoints = findBestPerimeterPath(from, firstMow, originalArea);
+      result.push(...waypoints);
+    }
   }
 
   // All mow points
   result.push(...mowPoints);
 
-  // Return: last mow point → startPoint
-  const lastMow = mowPoints[mowPoints.length - 1];
-  if (!isDirectPathInside(lastMow, startPoint, checkArea)) {
-    const waypoints = findBestPerimeterPath(lastMow, startPoint, routeArea);
-    result.push(...waypoints);
+  // --- Return: Garden → Dock ---
+  if (startPoint && mowPoints.length > 0) {
+    const lastMow = mowPoints[mowPoints.length - 1];
+    if (!isDirectPathInside(lastMow, startPoint, originalArea)) {
+      const waypoints = findBestPerimeterPath(lastMow, startPoint, originalArea);
+      result.push(...waypoints);
+    }
   }
-  result.push(startPoint);
+
+  if (dockPath && dockPath.length >= 2) {
+    // Dock entry path (reverse of exit)
+    result.push(...[...dockPath].reverse());
+  } else if (startPoint) {
+    result.push(startPoint);
+  }
 
   return result;
 }

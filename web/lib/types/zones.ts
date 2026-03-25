@@ -8,7 +8,8 @@ export type ZoneType =
   | "mow" // Maehzone
   | "exclusion" // Ausschlusszone (Beet, Baum, Teich)
   | "corridor" // Verbindungsweg zwischen Zonen
-  | "dock"; // Ladestationsbereich
+  | "dock" // Ladestationsbereich
+  | "dockPath"; // Ein-/Ausfahrtweg (Linie vom Dock in den Garten)
 
 export interface ZoneProperties {
   name: string;
@@ -26,8 +27,8 @@ export interface Zone {
   id: string;
   properties: ZoneProperties;
   geometry: {
-    type: "Polygon" | "Point";
-    coordinates: number[][][] | number[]; // Polygon: [[[lon,lat],...]], Point: [lon,lat]
+    type: "Polygon" | "LineString" | "Point";
+    coordinates: number[][][] | number[][] | number[]; // Polygon: [[[lon,lat],...]], LineString: [[lon,lat],...], Point: [lon,lat]
   };
 }
 
@@ -75,6 +76,19 @@ export const ZONE_TYPE_CONFIG: Record<
     color: "#f97316",
     fillOpacity: 0.3,
   },
+  dockPath: {
+    label: "Ein-/Ausfahrt",
+    color: "#a855f7",
+    fillOpacity: 0,
+    dashArray: "8, 6",
+  },
 };
+
+/** Zone types that are stored as LineString instead of Polygon */
+export const LINE_ZONE_TYPES: ZoneType[] = ["dockPath"];
+
+export function isLineZoneType(type: ZoneType): boolean {
+  return LINE_ZONE_TYPES.includes(type);
+}
 
 export type EditMode = "none" | "draw" | "record" | "edit";

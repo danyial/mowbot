@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as turf from "@turf/turf";
 import type { Zone, ZoneType, EditMode } from "@/lib/types/zones";
+import { isLineZoneType } from "@/lib/types/zones";
 
 interface ZoneState {
   // Data
@@ -173,7 +174,8 @@ export const useZoneStore = create<ZoneState>((set, get) => ({
   finishDrawing: async (name) => {
     const { drawingPoints, newZoneType, simplifyPoints } = get();
 
-    if (drawingPoints.length < 3) return null;
+    const minPoints = isLineZoneType(newZoneType) ? 2 : 3;
+    if (drawingPoints.length < minPoints) return null;
 
     // Simplify if many points (from GPS recording)
     const simplified =

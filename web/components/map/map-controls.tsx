@@ -21,6 +21,7 @@ import {
   ArrowRightLeft,
   BatteryCharging,
   List,
+  MoveRight,
 } from "lucide-react";
 import type { MapLayerType } from "./robot-map";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import type { ZoneType } from "@/lib/types/zones";
-import { ZONE_TYPE_CONFIG } from "@/lib/types/zones";
+import { ZONE_TYPE_CONFIG, isLineZoneType } from "@/lib/types/zones";
 
 interface MapControlsProps {
   following: boolean;
@@ -54,6 +55,7 @@ const ZONE_TYPE_ICONS: Record<ZoneType, typeof Fence> = {
   exclusion: TreePine,
   corridor: ArrowRightLeft,
   dock: BatteryCharging,
+  dockPath: MoveRight,
 };
 
 export function MapControls({
@@ -290,7 +292,7 @@ export function MapControls({
                   </span>
                 </div>
                 <div className="flex gap-1">
-                  {drawingPoints.length >= 3 && (
+                  {drawingPoints.length >= (isLineZoneType(newZoneType) ? 2 : 3) && (
                     <Button
                       size="sm"
                       onClick={() => setShowNameInput(true)}

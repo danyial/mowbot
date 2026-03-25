@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Polygon, CircleMarker, Marker, Tooltip, useMapEvents } from "react-leaflet";
+import { Polygon, Polyline, CircleMarker, Marker, Tooltip, useMapEvents } from "react-leaflet";
 import L, { LatLngExpression } from "leaflet";
 import * as turf from "@turf/turf";
 import { useZoneStore } from "@/lib/store/zone-store";
-import { ZONE_TYPE_CONFIG } from "@/lib/types/zones";
+import { ZONE_TYPE_CONFIG, isLineZoneType } from "@/lib/types/zones";
 import type { Zone } from "@/lib/types/zones";
 
 /**
@@ -44,19 +44,51 @@ function formatArea(sqMeters: number): string {
 }
 
 /**
- * Renders a single zone polygon on the map
+ * Renders a single zone on the map (Polygon or LineString)
  */
 function ZonePolygon({ zone }: { zone: Zone }) {
   const { activeZoneId, setActiveZone } = useZoneStore();
 
+  const config = ZONE_TYPE_CONFIG[zone.properties.zoneType];
+  const color = zone.properties.color || config.color;
+  const isActive = activeZoneId === zone.id;
+
+  // LineString rendering
+  if (zone.geometry.type === "LineString") {
+    const coords = zone.geometry.coordinates as number[][];
+    if (coords.length < 2) return null;
+    const positions = coords.map(
+      ([lon, lat]) => [lat, lon] as LatLngExpression
+    );
+    return (
+      <Polyline
+        positions={positions}
+        pathOptions={{
+          color: isActive ? "#ffffff" : color,
+          weight: isActive ? 4 : 3,
+          dashArray: config.dashArray,
+          opacity: 0.9,
+        }}
+        eventHandlers={{
+          click: () => setActiveZone(isActive ? null : zone.id),
+        }}
+      >
+        <Tooltip direction="center" permanent={false} className="zone-tooltip">
+          <div className="text-xs">
+            <strong>{zone.properties.name}</strong>
+            <br />
+            <span className="opacity-70">{config.label}</span>
+          </div>
+        </Tooltip>
+      </Polyline>
+    );
+  }
+
+  // Polygon rendering
   if (zone.geometry.type !== "Polygon") return null;
 
   const coordinates = zone.geometry.coordinates as number[][][];
   if (!coordinates[0] || coordinates[0].length < 3) return null;
-
-  const config = ZONE_TYPE_CONFIG[zone.properties.zoneType];
-  const color = zone.properties.color || config.color;
-  const isActive = activeZoneId === zone.id;
 
   const positions = geoJSONToLatLngs(coordinates);
   const centroid = getZoneCentroid(zone);
@@ -117,7 +149,7 @@ function ZonePolygon({ zone }: { zone: Zone }) {
 }
 
 /**
- * Renders the drawing-in-progress polygon
+ * Renders the drawing-in-progress shape (Polygon or LineString)
  */
 function DrawingPreview() {
   const { drawingPoints, newZoneType } = useZoneStore();
@@ -125,14 +157,27 @@ function DrawingPreview() {
   if (drawingPoints.length === 0) return null;
 
   const config = ZONE_TYPE_CONFIG[newZoneType];
+  const isLine = isLineZoneType(newZoneType);
   const positions = drawingPoints.map(
     ([lat, lon]) => [lat, lon] as LatLngExpression
   );
 
   return (
     <>
-      {/* Preview polygon (when 3+ points) — interactive=false so clicks pass through to map */}
-      {drawingPoints.length >= 3 && (
+      {/* Preview: Polyline for line types, Polygon for area types */}
+      {isLine && drawingPoints.length >= 2 && (
+        <Polyline
+          positions={positions}
+          interactive={false}
+          pathOptions={{
+            color: config.color,
+            weight: 3,
+            dashArray: "8, 6",
+            opacity: 0.9,
+          }}
+        />
+      )}
+      {!isLine && drawingPoints.length >= 3 && (
         <Polygon
           positions={positions}
           interactive={false}

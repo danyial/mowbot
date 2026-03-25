@@ -27,6 +27,7 @@ interface Config {
     robotWidth: number; // Breite in cm (Seite-zu-Seite)
     antennaOffsetX: number; // Antennen-Offset in cm: vorne (+) / hinten (-)
     antennaOffsetY: number; // Antennen-Offset in cm: links (+) / rechts (-)
+    dockExitDistance: number; // Auspark-Distanz in cm (blind rueckwaerts)
   };
   navigation: {
     ntripServer: string;
@@ -54,7 +55,7 @@ interface Config {
 
 const defaultConfig: Config = {
   connection: { rosbridgeUrl: "ws://mower.local:9090", reconnectInterval: 1000 },
-  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2, edgeClearance: 10, robotLength: 50, robotWidth: 35, antennaOffsetX: 0, antennaOffsetY: 0 },
+  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2, edgeClearance: 10, robotLength: 50, robotWidth: 35, antennaOffsetX: 0, antennaOffsetY: 0, dockExitDistance: 150 },
   navigation: { ntripServer: "", ntripMountpoint: "", ntripUsername: "", ntripPassword: "", magneticDeclination: 2.5 },
   map: { address: "", defaultLat: 48.1634, defaultLon: 11.3019, defaultZoom: 18, tileServerUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" },
   safety: { tiltThreshold: 15, cmdVelTimeout: 500, geofencingEnabled: true, imuRollOffset: 0, imuPitchOffset: 0, imuSmoothing: 0.15 },
@@ -549,6 +550,22 @@ export default function SettingsPage() {
             />
             <p className="text-[10px] text-muted-foreground">
               Abstand der Roboter-Kante zu Gartengrenze und Ausschlusszonen
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Auspark-Distanz: {config.robot.dockExitDistance ?? 150} cm</Label>
+            <Slider
+              min={50}
+              max={300}
+              step={10}
+              value={[config.robot.dockExitDistance ?? 150]}
+              onValueChange={([v]) =>
+                updateConfig("robot", "dockExitDistance", v)
+              }
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Strecke die der Bot blind rueckwaerts aus der Ladestation faehrt (ohne RTK-Fix)
             </p>
           </div>
 

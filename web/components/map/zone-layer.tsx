@@ -161,7 +161,7 @@ function DrawingPreview() {
           }}
         >
           {i === 0 && drawingPoints.length >= 3 && (
-            <Tooltip direction="top" permanent className="text-xs">
+            <Tooltip direction="top" permanent className="text-xs pointer-events-none">
               Klick zum Schliessen
             </Tooltip>
           )}

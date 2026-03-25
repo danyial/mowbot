@@ -290,6 +290,11 @@ export function MapControls({
                     {drawingPoints.length > 0 &&
                       ` (${drawingPoints.length} Punkte)`}
                   </span>
+                  {newZoneType === "dockPath" && drawingPoints.length === 0 && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      1. Punkt = Dock-Ausgang, letzter Punkt = Garten-Einstieg
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   {drawingPoints.length >= (isLineZoneType(newZoneType) ? 2 : 3) && (

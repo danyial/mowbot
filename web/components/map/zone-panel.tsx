@@ -69,9 +69,14 @@ function ZoneRow({
     // Calculate centroid for centering
     if (zone.geometry.type === "Polygon") {
       const coords = zone.geometry.coordinates as number[][][];
-      const ring = coords[0].slice(0, -1); // Remove closing point
+      const ring = coords[0].slice(0, -1);
       const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
       const avgLon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+      onFocusZone(avgLat, avgLon);
+    } else if (zone.geometry.type === "LineString") {
+      const coords = zone.geometry.coordinates as number[][];
+      const avgLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+      const avgLon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
       onFocusZone(avgLat, avgLon);
     }
   };
@@ -175,7 +180,7 @@ export function ZonePanel({ open, onClose, onFocusZone }: ZonePanelProps) {
   if (!open) return null;
 
   // Group zones by type
-  const typeOrder: ZoneType[] = ["garden", "mow", "exclusion", "corridor", "dock"];
+  const typeOrder: ZoneType[] = ["garden", "mow", "exclusion", "corridor", "dock", "dockPath"];
   const grouped = typeOrder
     .map((type) => ({
       type,

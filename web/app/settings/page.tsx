@@ -23,6 +23,10 @@ interface Config {
     maxAngularSpeed: number;
     mowWidth: number;
     edgeClearance: number; // Mindestabstand zu Grenzen in cm
+    robotLength: number; // Laenge in cm (Front-zu-Heck)
+    robotWidth: number; // Breite in cm (Seite-zu-Seite)
+    antennaOffsetX: number; // Antennen-Offset in cm: vorne (+) / hinten (-)
+    antennaOffsetY: number; // Antennen-Offset in cm: links (+) / rechts (-)
   };
   navigation: {
     ntripServer: string;
@@ -50,11 +54,136 @@ interface Config {
 
 const defaultConfig: Config = {
   connection: { rosbridgeUrl: "ws://mower.local:9090", reconnectInterval: 1000 },
-  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2, edgeClearance: 10 },
+  robot: { wheelSeparation: 0.3, maxLinearSpeed: 1.0, maxAngularSpeed: 2.0, mowWidth: 0.2, edgeClearance: 10, robotLength: 50, robotWidth: 35, antennaOffsetX: 0, antennaOffsetY: 0 },
   navigation: { ntripServer: "", ntripMountpoint: "", ntripUsername: "", ntripPassword: "", magneticDeclination: 2.5 },
   map: { address: "", defaultLat: 48.1634, defaultLon: 11.3019, defaultZoom: 18, tileServerUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" },
   safety: { tiltThreshold: 15, cmdVelTimeout: 500, geofencingEnabled: true, imuRollOffset: 0, imuPitchOffset: 0, imuSmoothing: 0.15 },
 };
+
+/**
+ * Schematic top-down view of the robot with antenna position indicator.
+ */
+function RobotSchematic({
+  length,
+  width,
+  antennaX,
+  antennaY,
+}: {
+  length: number; // cm
+  width: number; // cm
+  antennaX: number; // cm, front(+)/back(-)
+  antennaY: number; // cm, left(+)/right(-)
+}) {
+  const svgSize = 200;
+  const padding = 20;
+  const maxDim = Math.max(length, width, 1);
+  const scale = (svgSize - padding * 2) / maxDim;
+  const rw = width * scale;
+  const rl = length * scale;
+  const cx = svgSize / 2;
+  const cy = svgSize / 2;
+
+  // Antenna position: X = forward (up in SVG), Y = left (left in SVG)
+  const ax = cx - antennaY * scale;
+  const ay = cy - antennaX * scale;
+
+  // Clamp antenna to robot bounds for display
+  const clampedAx = Math.max(cx - rw / 2 + 4, Math.min(cx + rw / 2 - 4, ax));
+  const clampedAy = Math.max(cy - rl / 2 + 4, Math.min(cy + rl / 2 - 4, ay));
+
+  return (
+    <svg
+      viewBox={`0 0 ${svgSize} ${svgSize}`}
+      className="w-44 h-44"
+    >
+      {/* Background grid */}
+      <defs>
+        <pattern id="grid" width={10} height={10} patternUnits="userSpaceOnUse">
+          <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#334155" strokeWidth={0.3} />
+        </pattern>
+      </defs>
+      <rect width={svgSize} height={svgSize} fill="url(#grid)" rx={8} />
+
+      {/* Tracks/wheels */}
+      <rect
+        x={cx - rw / 2 - 5}
+        y={cy - rl / 3}
+        width={5}
+        height={(rl * 2) / 3}
+        rx={2}
+        fill="#475569"
+      />
+      <rect
+        x={cx + rw / 2}
+        y={cy - rl / 3}
+        width={5}
+        height={(rl * 2) / 3}
+        rx={2}
+        fill="#475569"
+      />
+
+      {/* Robot body */}
+      <rect
+        x={cx - rw / 2}
+        y={cy - rl / 2}
+        width={rw}
+        height={rl}
+        rx={6}
+        fill="#1e293b"
+        stroke="#475569"
+        strokeWidth={1.5}
+      />
+
+      {/* Front indicator (green triangle at top) */}
+      <polygon
+        points={`${cx - 7},${cy - rl / 2 + 3} ${cx + 7},${cy - rl / 2 + 3} ${cx},${cy - rl / 2 - 5}`}
+        fill="#22c55e"
+      />
+
+      {/* Center crosshair */}
+      <line x1={cx - 6} y1={cy} x2={cx + 6} y2={cy} stroke="#64748b" strokeWidth={0.5} />
+      <line x1={cx} y1={cy - 6} x2={cx} y2={cy + 6} stroke="#64748b" strokeWidth={0.5} />
+      <circle cx={cx} cy={cy} r={1.5} fill="#64748b" />
+
+      {/* Antenna */}
+      <circle
+        cx={clampedAx}
+        cy={clampedAy}
+        r={6}
+        fill="#3b82f6"
+        stroke="#fff"
+        strokeWidth={2}
+      />
+      {/* Antenna signal rings */}
+      <circle
+        cx={clampedAx}
+        cy={clampedAy}
+        r={10}
+        fill="none"
+        stroke="#3b82f6"
+        strokeWidth={0.5}
+        opacity={0.4}
+      />
+      <circle
+        cx={clampedAx}
+        cy={clampedAy}
+        r={14}
+        fill="none"
+        stroke="#3b82f6"
+        strokeWidth={0.3}
+        opacity={0.2}
+      />
+
+      {/* Labels */}
+      <text x={cx} y={cy - rl / 2 - 10} textAnchor="middle" fill="#94a3b8" fontSize={9} fontFamily="sans-serif">
+        Front
+      </text>
+      <text x={cx} y={cy + rl / 2 + 14} textAnchor="middle" fill="#64748b" fontSize={8} fontFamily="sans-serif">
+        {length} x {width} cm
+      </text>
+    </svg>
+  );
+}
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<Config>(defaultConfig);
@@ -336,7 +465,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Mähwerk-Breite (m)</Label>
+              <Label>Maehwerk-Breite (m)</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -347,6 +476,31 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+
+          {/* Robot dimensions */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Roboter-Laenge: {config.robot.robotLength} cm</Label>
+              <Slider
+                min={20}
+                max={100}
+                step={1}
+                value={[config.robot.robotLength]}
+                onValueChange={([v]) => updateConfig("robot", "robotLength", v)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Roboter-Breite: {config.robot.robotWidth} cm</Label>
+              <Slider
+                min={15}
+                max={80}
+                step={1}
+                value={[config.robot.robotWidth]}
+                onValueChange={([v]) => updateConfig("robot", "robotWidth", v)}
+              />
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label>Max Linear: {config.robot.maxLinearSpeed} m/s</Label>
             <Slider
@@ -385,6 +539,61 @@ export default function SettingsPage() {
             <p className="text-[10px] text-muted-foreground">
               Abstand des Roboter-Mittelpunkts zu Gartengrenze und Ausschlusszonen
             </p>
+          </div>
+
+          {/* Antenna position */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Antennenposition</Label>
+            <p className="text-[10px] text-muted-foreground">
+              Offset der GPS-Antenne relativ zur Roboter-Mitte
+            </p>
+          </div>
+          <div className="flex gap-4 items-start">
+            {/* Left: Sliders */}
+            <div className="flex-1 space-y-3">
+              <div className="space-y-2">
+                <Label>X vor/zurueck: {config.robot.antennaOffsetX} cm</Label>
+                <Slider
+                  min={-25}
+                  max={25}
+                  step={1}
+                  value={[config.robot.antennaOffsetX]}
+                  onValueChange={([v]) =>
+                    updateConfig("robot", "antennaOffsetX", v)
+                  }
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Hinten</span>
+                  <span>Vorne</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Y links/rechts: {config.robot.antennaOffsetY} cm</Label>
+                <Slider
+                  min={-25}
+                  max={25}
+                  step={1}
+                  value={[config.robot.antennaOffsetY]}
+                  onValueChange={([v]) =>
+                    updateConfig("robot", "antennaOffsetY", v)
+                  }
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Rechts</span>
+                  <span>Links</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Schematic */}
+            <div className="flex-shrink-0">
+              <RobotSchematic
+                length={config.robot.robotLength}
+                width={config.robot.robotWidth}
+                antennaX={config.robot.antennaOffsetX}
+                antennaY={config.robot.antennaOffsetY}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

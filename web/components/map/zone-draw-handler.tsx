@@ -8,12 +8,17 @@ import { useZoneStore } from "@/lib/store/zone-store";
  * 
  * - Single click: adds a point to the drawing
  * - Click near first point (< 15m): closes the polygon
+ * 
+ * IMPORTANT: We read state via getState() inside the click handler
+ * to avoid stale closure issues with useMapEvents.
  */
 export function ZoneDrawHandler() {
-  const { editMode, drawingPoints, addDrawingPoint } = useZoneStore();
-
   useMapEvents({
     click(e) {
+      // Always read fresh state to avoid stale closures
+      const { editMode, drawingPoints, addDrawingPoint } =
+        useZoneStore.getState();
+
       if (editMode !== "draw") return;
 
       const { lat, lng: lon } = e.latlng;
@@ -27,9 +32,6 @@ export function ZoneDrawHandler() {
         // ~15m threshold at mid-latitudes
         const threshold = 15 / 111320;
         if (distToFirst < threshold) {
-          // Don't add the point — the finish action will be handled
-          // by the UI button or this close-detection
-          // Trigger finish via a custom event
           window.dispatchEvent(
             new CustomEvent("zone-drawing-close-requested")
           );

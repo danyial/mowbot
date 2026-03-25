@@ -116,7 +116,7 @@ function createRobotIcon(heading: number): L.DivIcon {
       <div style="
         width: 16px;
         height: 16px;
-        background: #22c55e;
+        background: #f97316;
         border: 2px solid #fff;
         border-radius: 50%;
         box-shadow: 0 1px 4px rgba(0,0,0,0.4);
@@ -129,7 +129,7 @@ function createRobotIcon(heading: number): L.DivIcon {
         height: 0;
         border-left: 5px solid transparent;
         border-right: 5px solid transparent;
-        border-bottom: 8px solid #22c55e;
+        border-bottom: 8px solid #f97316;
         position: absolute;
         top: -5px;
         left: 5px;
@@ -305,9 +305,9 @@ function SimulationLayer({
         ref={trailRef}
         positions={[pathPoints[0].map(Number) as [number, number]]}
         pathOptions={{
-          color: "#22c55e",
+          color: "#f97316",
           weight: 3,
-          opacity: 0.9,
+          opacity: 0.8,
         }}
       />
 
@@ -459,9 +459,9 @@ export default function MissionPreviewMap({
               ([lat, lon]) => [lat, lon] as LatLngExpression
             )}
             pathOptions={{
-              color: "#22c55e",
+              color: "#f97316",
               weight: 3,
-              opacity: 0.9,
+              opacity: 0.8,
             }}
           />
         )}

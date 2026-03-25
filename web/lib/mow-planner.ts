@@ -253,6 +253,126 @@ function safeRoute(
 }
 
 /**
+ * Dock-specific safe routing: like safeRoute but uses vertices from BOTH
+ * safeArea (outer boundary) and dockRouteArea (further inset) as waypoint
+ * candidates. The canConnect check uses safeArea (the larger polygon).
+ *
+ * This allows the path to step from a safeArea-edge vertex near the dock
+ * to a dockRouteArea interior vertex, routing the longer diagonal segments
+ * through the interior where they maintain better clearance from boundaries.
+ */
+function safeRouteDock(
+  from: [number, number],
+  to: [number, number],
+  safeArea: Feature<Polygon | MultiPolygon>,
+  dockRouteArea: Feature<Polygon | MultiPolygon>
+): [number, number][] {
+  if (isDirectPathInside(from, to, dockRouteArea)) {
+    return [];
+  }
+
+  // Collect nodes from BOTH polygons
+  const nodes: [number, number][] = [from, to];
+
+  for (const ring of getAllRings(safeArea)) {
+    const n = ring.length - 1;
+    for (let i = 0; i < n; i++) {
+      nodes.push([ring[i][1], ring[i][0]]);
+    }
+  }
+  for (const ring of getAllRings(dockRouteArea)) {
+    const n = ring.length - 1;
+    for (let i = 0; i < n; i++) {
+      nodes.push([ring[i][1], ring[i][0]]);
+    }
+  }
+
+  const N = nodes.length;
+
+  // canConnect: segments must stay inside safeArea AND for segments longer
+  // than ~2m, they must also stay inside dockRouteArea (the further-inset area).
+  // Short segments (< 2m) are allowed in the edge corridor between safeArea
+  // and dockRouteArea — this covers the dock→first-interior-vertex hop.
+  const SHORT_SEGMENT_DEG = 2.0 / 111320; // ~2m in degrees
+
+  function canConnect(a: [number, number], b: [number, number]): boolean {
+    const [lat1, lon1] = a;
+    const [lat2, lon2] = b;
+    if (Math.abs(lat1 - lat2) < 1e-12 && Math.abs(lon1 - lon2) < 1e-12) return true;
+
+    const dLat = lat2 - lat1;
+    const dLon = lon2 - lon1;
+    const segLenDeg = Math.sqrt(dLat * dLat + dLon * dLon);
+    const isLong = segLenDeg > SHORT_SEGMENT_DEG;
+
+    // Use more samples for better coverage (especially near small exclusion zones)
+    const samples = isLong
+      ? [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+      : [0.25, 0.5, 0.75];
+    for (const t of samples) {
+      const sLat = lat1 + dLat * t;
+      const sLon = lon1 + dLon * t;
+      const pt = turf.point([sLon, sLat]);
+      // Must always be inside safeArea
+      if (!turf.booleanPointInPolygon(pt, safeArea)) return false;
+      // Long segments must also be inside dockRouteArea (maintain extra clearance)
+      if (isLong && !turf.booleanPointInPolygon(pt, dockRouteArea)) return false;
+    }
+    return true;
+  }
+
+  const dist = new Float64Array(N).fill(Infinity);
+  const prev = new Int32Array(N).fill(-1);
+  const visited = new Uint8Array(N);
+  dist[0] = 0;
+
+  for (let iter = 0; iter < N; iter++) {
+    let u = -1;
+    let uDist = Infinity;
+    for (let i = 0; i < N; i++) {
+      if (!visited[i] && dist[i] < uDist) {
+        uDist = dist[i];
+        u = i;
+      }
+    }
+    if (u === -1 || u === 1) break;
+    visited[u] = 1;
+
+    for (let v = 0; v < N; v++) {
+      if (visited[v]) continue;
+      if (!canConnect(nodes[u], nodes[v])) continue;
+
+      const dLat = nodes[v][0] - nodes[u][0];
+      const dLon = nodes[v][1] - nodes[u][1];
+      const edgeDist = Math.sqrt(dLat * dLat + dLon * dLon);
+      const newDist = dist[u] + edgeDist;
+
+      if (newDist < dist[v]) {
+        dist[v] = newDist;
+        prev[v] = u;
+      }
+    }
+  }
+
+  if (dist[1] === Infinity) return [];
+
+  const pathIndices: number[] = [];
+  let cur = 1;
+  while (cur !== 0 && cur !== -1) {
+    pathIndices.push(cur);
+    cur = prev[cur];
+  }
+  pathIndices.reverse();
+
+  const waypoints: [number, number][] = [];
+  for (const idx of pathIndices) {
+    if (idx !== 1) waypoints.push(nodes[idx]);
+  }
+
+  return waypoints;
+}
+
+/**
  * Check if a direct line between two [lat, lon] points stays within the polygon.
  */
 function isDirectPathInside(
@@ -450,8 +570,13 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
+      let dockRouteAreaFallback: Feature<Polygon | MultiPolygon> = safeAreaWithHoles;
+      const dockInsetFb = turf.buffer(safeAreaWithHoles, -(effectiveSpacing * 0.5) / 1000, { units: "kilometers" });
+      if (dockInsetFb && turf.area(dockInsetFb) > 0.01) {
+        dockRouteAreaFallback = dockInsetFb as Feature<Polygon | MultiPolygon>;
+      }
       const { points: allPoints, dockExitLength, dockEntryLength } =
-        addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles);
+        addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, dockRouteAreaFallback);
       return buildResult(allPoints, speed, 0, totalArea, 0, dockExitLength, dockEntryLength);
     }
   }
@@ -476,8 +601,19 @@ export function generateMowPath(params: {
   const turns = Math.max(0, stripeCount - 1);
 
   // 6. Add dock exit/entry paths
+  // Use a further-inset area for dock routing so the dock connection path
+  // maintains clearance from boundaries (runs inside the first perimeter pass
+  // instead of right on the mowArea edge).
+  let dockRouteArea: Feature<Polygon | MultiPolygon> = safeAreaWithHoles;
+  const dockInset = turf.buffer(safeAreaWithHoles, -(effectiveSpacing * 0.5) / 1000, {
+    units: "kilometers",
+  });
+  if (dockInset && turf.area(dockInset) > 0.01) {
+    dockRouteArea = dockInset as Feature<Polygon | MultiPolygon>;
+  }
+
   const { points: allPoints, dockExitLength, dockEntryLength } =
-    addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles);
+    addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, dockRouteArea);
 
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm, dockExitLength, dockEntryLength);
 }
@@ -489,13 +625,18 @@ export function generateMowPath(params: {
 /**
  * Add dock exit/entry paths around the mow points.
  * Returns the full path AND the number of points belonging to dock exit/entry.
+ *
+ * @param dockRouteArea Further-inset polygon for routing dock connections.
+ *   This ensures the dock path maintains clearance from boundaries by routing
+ *   inside the first perimeter pass rather than right on the mowArea edge.
  */
 function addDockPaths(
   dockPath: [number, number][] | undefined,
   dockExitDistance: number | undefined,
   startPoint: [number, number] | undefined,
   mowPoints: [number, number][],
-  safeArea: Feature<Polygon | MultiPolygon>
+  safeArea: Feature<Polygon | MultiPolygon>,
+  dockRouteArea: Feature<Polygon | MultiPolygon>
 ): { points: [number, number][]; dockExitLength: number; dockEntryLength: number } {
   if (mowPoints.length === 0) {
     return { points: mowPoints, dockExitLength: 0, dockEntryLength: 0 };
@@ -512,17 +653,23 @@ function addDockPaths(
   }
 
   // Connection from start point to first mow point
+  // Routes through dockRouteArea (further inset) so the connection path
+  // maintains extra clearance from boundaries. Uses safeArea for validation
+  // (canConnect) to allow the from/to points which may lie on the safeArea edge.
+  // Nodes from BOTH safeArea and dockRouteArea are included so Dijkstra can
+  // step from the edge (safeArea vertex near dock) to the interior (dockRouteArea
+  // vertex) and route the longer segments through the interior.
   if (startPoint && mowPoints.length > 0) {
     const firstMow = mowPoints[0];
     const from = exitPart.length > 0 ? exitPart[exitPart.length - 1] : startPoint;
-    const waypoints = safeRoute(from, firstMow, safeArea, safeArea);
+    const waypoints = safeRouteDock(from, firstMow, safeArea, dockRouteArea);
     exitPart.push(...waypoints);
   }
 
   // --- Return: Garden → Dock ---
   if (startPoint && mowPoints.length > 0) {
     const lastMow = mowPoints[mowPoints.length - 1];
-    const waypoints = safeRoute(lastMow, startPoint, safeArea, safeArea);
+    const waypoints = safeRouteDock(lastMow, startPoint, safeArea, dockRouteArea);
     entryPart.push(...waypoints);
   }
 

@@ -9,7 +9,7 @@
  *    then hole ring passes (all passes per hole) separately
  * 5. Generate parallel stripes using angled scan lines (no rotation)
  * 6. Sort stripes by nearest-neighbor for shortest travel between stripes
- * 7. Connect stripes via safeRoute() — projects onto polygon edges for safe routing
+ * 7. Connect stripes via safeRoute() — visibility graph with clearance enforcement
  * 8. Add start/return path from dock or GPS position
  * 9. Return waypoints + distance estimate + area stats + dock path lengths
  */
@@ -62,9 +62,9 @@ function extractRingsSeparately(
       : [feature.geometry.coordinates];
 
   for (const coords of polygons) {
-    outerRings.push(coords[0]); // First ring is outer
+    outerRings.push(coords[0]);
     for (let i = 1; i < coords.length; i++) {
-      holeRings.push(coords[i]); // Remaining rings are holes
+      holeRings.push(coords[i]);
     }
   }
   return { outerRings, holeRings };
@@ -77,67 +77,52 @@ function ringToWaypoints(ring: number[][]): [number, number][] {
   return ring.map(([lon, lat]) => [lat, lon] as [number, number]);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Safe routing — project onto polygon EDGES, not just vertices
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Project a [lat, lon] point onto the nearest EDGE of a ring [[lon, lat], ...].
- * Returns the projected point as [lat, lon] and the index of the edge's
- * start vertex.
- */
-function projectPointOntoRing(
-  point: [number, number],
-  ring: number[][]
-): { projected: [number, number]; edgeStartIdx: number } {
-  const [lat, lon] = point;
-  const n = ring.length - 1; // exclude closing point
-  if (n <= 0) return { projected: point, edgeStartIdx: 0 };
-
-  let bestDist = Infinity;
-  let bestProjected: [number, number] = point;
-  let bestEdgeIdx = 0;
-
-  for (let i = 0; i < n; i++) {
-    const ax = ring[i][0],
-      ay = ring[i][1]; // [lon, lat]
-    const j = (i + 1) % n;
-    const bx = ring[j][0],
-      by = ring[j][1];
-
-    const dx = bx - ax;
-    const dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq < 1e-20) continue;
-
-    let t = ((lon - ax) * dx + (lat - ay) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-
-    const px = ax + t * dx;
-    const py = ay + t * dy;
-    const dist = (lon - px) * (lon - px) + (lat - py) * (lat - py);
-
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestProjected = [py, px]; // [lat, lon]
-      bestEdgeIdx = i;
+/** Collect unique [lat, lon] vertices from a polygon's rings */
+function collectVertices(area: Feature<Polygon | MultiPolygon>): [number, number][] {
+  const verts: [number, number][] = [];
+  for (const ring of getAllRings(area)) {
+    const n = ring.length - 1;
+    for (let i = 0; i < n; i++) {
+      verts.push([ring[i][1], ring[i][0]]);
     }
   }
-
-  return { projected: bestProjected, edgeStartIdx: bestEdgeIdx };
+  return verts;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified safe routing — visibility graph with clearance enforcement
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ~2m in degrees — segments shorter than this are allowed near the edge */
+const SHORT_SEGMENT_DEG = 2.0 / 111320;
 
 /**
  * Route safely from A to B within the polygon using a visibility graph.
  *
- * 1. If a direct line A→B stays inside → returns [].
- * 2. Otherwise, builds a visibility graph from all polygon vertices + A + B.
- *    Two nodes are connected if the direct line between them stays inside
- *    the polygon (checked via midpoint sampling).
- * 3. Finds the shortest path via Dijkstra.
+ * Unified routing for ALL path types (stripe connections, perimeter groups,
+ * dock connections). The same clearance rules apply everywhere:
  *
- * This correctly handles concave polygons, holes (exclusion zones), and
- * any complex geometry — the path will always stay inside the polygon.
+ * 1. If a direct line A→B stays inside insetArea (or checkArea if no inset)
+ *    → returns [] (direct connection is fine).
+ * 2. Otherwise, builds a visibility graph using vertices from routeArea
+ *    AND insetArea (if provided) as waypoint candidates.
+ * 3. canConnect rules:
+ *    - All segments must stay inside checkArea (the mowArea boundary).
+ *    - Long segments (>2m) must ALSO stay inside insetArea (maintains extra
+ *      clearance from boundaries and exclusion zones).
+ *    - Short segments (<2m) are allowed in the edge corridor (for hops from
+ *      edge vertices to interior vertices).
+ * 4. Finds shortest valid path via Dijkstra.
+ *
+ * @param checkArea  Polygon for basic validity — segments must be inside this.
+ *                   Typically the mowArea (safetyMargin-inset garden minus exclusions).
+ * @param routeArea  Polygon whose vertices are used as Dijkstra nodes.
+ *                   Typically the same as checkArea.
+ * @param insetArea  Optional further-inset polygon. When provided:
+ *                   - Its vertices are added as additional Dijkstra nodes.
+ *                   - Long segments must stay inside this area.
+ *                   This forces connections to route through the interior,
+ *                   maintaining extra clearance from boundaries.
  *
  * Returns intermediate waypoints (does NOT include A or B themselves).
  */
@@ -145,155 +130,24 @@ function safeRoute(
   from: [number, number],
   to: [number, number],
   checkArea: Feature<Polygon | MultiPolygon>,
-  routeArea: Feature<Polygon | MultiPolygon>
+  routeArea: Feature<Polygon | MultiPolygon>,
+  insetArea?: Feature<Polygon | MultiPolygon>
 ): [number, number][] {
-  if (isDirectPathInside(from, to, checkArea)) {
+  // If insetArea is provided, prefer direct paths that stay inside it
+  const directCheckArea = insetArea ?? checkArea;
+  if (isDirectPathInside(from, to, directCheckArea)) {
     return [];
   }
 
-  // Collect all polygon vertices as [lat, lon] waypoint candidates
-  const allRings = getAllRings(routeArea);
-  const nodes: [number, number][] = [from, to]; // indices 0 = from, 1 = to
-
-  for (const ring of allRings) {
-    const n = ring.length - 1; // exclude closing point
-    for (let i = 0; i < n; i++) {
-      nodes.push([ring[i][1], ring[i][0]]); // [lat, lon]
-    }
-  }
-
-  const N = nodes.length;
-
-  // Build adjacency: check which node pairs have a direct path inside the polygon.
-  // Use midpoint sampling (3 samples) for speed — full booleanWithin is too slow
-  // for N² pairs on large polygons.
-  function canConnect(a: [number, number], b: [number, number]): boolean {
-    const [lat1, lon1] = a;
-    const [lat2, lon2] = b;
-    // Skip zero-length
-    if (Math.abs(lat1 - lat2) < 1e-12 && Math.abs(lon1 - lon2) < 1e-12) return true;
-    // Check midpoint and quarter points
-    for (const t of [0.25, 0.5, 0.75]) {
-      const sLat = lat1 + (lat2 - lat1) * t;
-      const sLon = lon1 + (lon2 - lon1) * t;
-      const pt = turf.point([sLon, sLat]);
-      if (!turf.booleanPointInPolygon(pt, checkArea)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // Build adjacency list with distances (only compute edges we need)
-  // For efficiency, pre-check which nodes are reachable from `from` and can reach `to`
-  // Use Dijkstra with lazy edge evaluation
-
-  // Dijkstra's algorithm with lazy edge computation
-  const dist = new Float64Array(N).fill(Infinity);
-  const prev = new Int32Array(N).fill(-1);
-  const visited = new Uint8Array(N);
-  dist[0] = 0; // from = index 0
-
-  for (let iter = 0; iter < N; iter++) {
-    // Find unvisited node with smallest distance
-    let u = -1;
-    let uDist = Infinity;
-    for (let i = 0; i < N; i++) {
-      if (!visited[i] && dist[i] < uDist) {
-        uDist = dist[i];
-        u = i;
-      }
-    }
-    if (u === -1 || u === 1) break; // no more reachable nodes, or reached `to`
-
-    visited[u] = 1;
-
-    // Try edges from u to all other unvisited nodes
-    for (let v = 0; v < N; v++) {
-      if (visited[v]) continue;
-
-      // Check if u→v is a valid connection
-      if (!canConnect(nodes[u], nodes[v])) continue;
-
-      const dLat = nodes[v][0] - nodes[u][0];
-      const dLon = nodes[v][1] - nodes[u][1];
-      const edgeDist = Math.sqrt(dLat * dLat + dLon * dLon);
-      const newDist = dist[u] + edgeDist;
-
-      if (newDist < dist[v]) {
-        dist[v] = newDist;
-        prev[v] = u;
-      }
-    }
-  }
-
-  // Reconstruct path from `to` (index 1) back to `from` (index 0)
-  if (dist[1] === Infinity) {
-    // No path found — shouldn't happen, but fallback to empty
-    return [];
-  }
-
-  const pathIndices: number[] = [];
-  let cur = 1;
-  while (cur !== 0 && cur !== -1) {
-    pathIndices.push(cur);
-    cur = prev[cur];
-  }
-  pathIndices.reverse();
-
-  // Return intermediate nodes (skip index 1 = `to`, don't include `from`)
-  const waypoints: [number, number][] = [];
-  for (const idx of pathIndices) {
-    if (idx !== 1) { // skip `to` — caller adds it
-      waypoints.push(nodes[idx]);
-    }
-  }
-
-  return waypoints;
-}
-
-/**
- * Dock-specific safe routing: like safeRoute but uses vertices from BOTH
- * safeArea (outer boundary) and dockRouteArea (further inset) as waypoint
- * candidates. The canConnect check uses safeArea (the larger polygon).
- *
- * This allows the path to step from a safeArea-edge vertex near the dock
- * to a dockRouteArea interior vertex, routing the longer diagonal segments
- * through the interior where they maintain better clearance from boundaries.
- */
-function safeRouteDock(
-  from: [number, number],
-  to: [number, number],
-  safeArea: Feature<Polygon | MultiPolygon>,
-  dockRouteArea: Feature<Polygon | MultiPolygon>
-): [number, number][] {
-  if (isDirectPathInside(from, to, dockRouteArea)) {
-    return [];
-  }
-
-  // Collect nodes from BOTH polygons
+  // Collect nodes: from + to + routeArea vertices + insetArea vertices
   const nodes: [number, number][] = [from, to];
-
-  for (const ring of getAllRings(safeArea)) {
-    const n = ring.length - 1;
-    for (let i = 0; i < n; i++) {
-      nodes.push([ring[i][1], ring[i][0]]);
-    }
-  }
-  for (const ring of getAllRings(dockRouteArea)) {
-    const n = ring.length - 1;
-    for (let i = 0; i < n; i++) {
-      nodes.push([ring[i][1], ring[i][0]]);
-    }
+  nodes.push(...collectVertices(routeArea));
+  if (insetArea) {
+    nodes.push(...collectVertices(insetArea));
   }
 
   const N = nodes.length;
-
-  // canConnect: segments must stay inside safeArea AND for segments longer
-  // than ~2m, they must also stay inside dockRouteArea (the further-inset area).
-  // Short segments (< 2m) are allowed in the edge corridor between safeArea
-  // and dockRouteArea — this covers the dock→first-interior-vertex hop.
-  const SHORT_SEGMENT_DEG = 2.0 / 111320; // ~2m in degrees
+  const hasInset = !!insetArea;
 
   function canConnect(a: [number, number], b: [number, number]): boolean {
     const [lat1, lon1] = a;
@@ -303,24 +157,27 @@ function safeRouteDock(
     const dLat = lat2 - lat1;
     const dLon = lon2 - lon1;
     const segLenDeg = Math.sqrt(dLat * dLat + dLon * dLon);
-    const isLong = segLenDeg > SHORT_SEGMENT_DEG;
+    const isLong = hasInset && segLenDeg > SHORT_SEGMENT_DEG;
 
-    // Use more samples for better coverage (especially near small exclusion zones)
+    // More samples for long segments to catch small exclusion zones
     const samples = isLong
-      ? [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+      ? [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+         0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
       : [0.25, 0.5, 0.75];
+
     for (const t of samples) {
       const sLat = lat1 + dLat * t;
       const sLon = lon1 + dLon * t;
       const pt = turf.point([sLon, sLat]);
-      // Must always be inside safeArea
-      if (!turf.booleanPointInPolygon(pt, safeArea)) return false;
-      // Long segments must also be inside dockRouteArea (maintain extra clearance)
-      if (isLong && !turf.booleanPointInPolygon(pt, dockRouteArea)) return false;
+      // Must always be inside checkArea
+      if (!turf.booleanPointInPolygon(pt, checkArea)) return false;
+      // Long segments must also be inside insetArea (extra clearance)
+      if (isLong && !turf.booleanPointInPolygon(pt, insetArea!)) return false;
     }
     return true;
   }
 
+  // Dijkstra's algorithm
   const dist = new Float64Array(N).fill(Infinity);
   const prev = new Int32Array(N).fill(-1);
   const visited = new Uint8Array(N);
@@ -396,7 +253,8 @@ function isDirectPathInside(
  */
 function connectRingsWithSafeRoute(
   rings: [number, number][][],
-  routeArea: Feature<Polygon | MultiPolygon>
+  routeArea: Feature<Polygon | MultiPolygon>,
+  insetArea?: Feature<Polygon | MultiPolygon>
 ): [number, number][] {
   if (rings.length === 0) return [];
   const result: [number, number][] = [...rings[0]];
@@ -404,7 +262,7 @@ function connectRingsWithSafeRoute(
   for (let i = 1; i < rings.length; i++) {
     const from = result[result.length - 1];
     const to = rings[i][0];
-    const waypoints = safeRoute(from, to, routeArea, routeArea);
+    const waypoints = safeRoute(from, to, routeArea, routeArea, insetArea);
     result.push(...waypoints);
     result.push(...rings[i]);
   }
@@ -514,6 +372,18 @@ export function generateMowPath(params: {
 
   const totalArea = turf.area(mowArea);
 
+  // Create inset area for routing clearance enforcement.
+  // All long connection segments (>2m) must stay inside this further-inset polygon,
+  // ensuring they maintain extra clearance from boundaries and exclusion zones.
+  // This applies uniformly to stripe connections, perimeter connections, and dock connections.
+  let routeInsetArea: Feature<Polygon | MultiPolygon> | undefined;
+  const inset = turf.buffer(mowArea, -(effectiveSpacing * 0.5) / 1000, {
+    units: "kilometers",
+  });
+  if (inset && turf.area(inset) > 0.01) {
+    routeInsetArea = inset as Feature<Polygon | MultiPolygon>;
+  }
+
   // 4. Generate perimeter passes
   const outerPassRings: [number, number][][] = [];
   const holePassGroups: Map<number, [number, number][][]> = new Map();
@@ -544,11 +414,11 @@ export function generateMowPath(params: {
   const perimeterGroups: [number, number][][] = [];
 
   if (outerPassRings.length > 0) {
-    perimeterGroups.push(connectRingsWithSafeRoute(outerPassRings, mowArea));
+    perimeterGroups.push(connectRingsWithSafeRoute(outerPassRings, mowArea, routeInsetArea));
   }
 
   for (const [, passes] of holePassGroups) {
-    perimeterGroups.push(connectRingsWithSafeRoute(passes, mowArea));
+    perimeterGroups.push(connectRingsWithSafeRoute(passes, mowArea, routeInsetArea));
   }
 
   for (let g = 0; g < perimeterGroups.length; g++) {
@@ -556,7 +426,7 @@ export function generateMowPath(params: {
     if (g > 0 && mowPoints.length > 0) {
       const from = mowPoints[mowPoints.length - 1];
       const to = group[0];
-      const waypoints = safeRoute(from, to, mowArea, mowArea);
+      const waypoints = safeRoute(from, to, mowArea, mowArea, routeInsetArea);
       mowPoints.push(...waypoints);
     }
     mowPoints.push(...group);
@@ -570,13 +440,8 @@ export function generateMowPath(params: {
     if (shrunk && turf.area(shrunk) > 0.01) {
       innerAreaFeature = shrunk as Feature<Polygon | MultiPolygon>;
     } else {
-      let dockRouteAreaFallback: Feature<Polygon | MultiPolygon> = safeAreaWithHoles;
-      const dockInsetFb = turf.buffer(safeAreaWithHoles, -(effectiveSpacing * 0.5) / 1000, { units: "kilometers" });
-      if (dockInsetFb && turf.area(dockInsetFb) > 0.01) {
-        dockRouteAreaFallback = dockInsetFb as Feature<Polygon | MultiPolygon>;
-      }
       const { points: allPoints, dockExitLength, dockEntryLength } =
-        addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, dockRouteAreaFallback);
+        addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, routeInsetArea);
       return buildResult(allPoints, speed, 0, totalArea, 0, dockExitLength, dockEntryLength);
     }
   }
@@ -594,26 +459,16 @@ export function generateMowPath(params: {
     angle,
     mowArea,
     mowArea,
-    lastPoint
+    lastPoint,
+    routeInsetArea
   );
   mowPoints.push(...stripePoints);
 
   const turns = Math.max(0, stripeCount - 1);
 
   // 6. Add dock exit/entry paths
-  // Use a further-inset area for dock routing so the dock connection path
-  // maintains clearance from boundaries (runs inside the first perimeter pass
-  // instead of right on the mowArea edge).
-  let dockRouteArea: Feature<Polygon | MultiPolygon> = safeAreaWithHoles;
-  const dockInset = turf.buffer(safeAreaWithHoles, -(effectiveSpacing * 0.5) / 1000, {
-    units: "kilometers",
-  });
-  if (dockInset && turf.area(dockInset) > 0.01) {
-    dockRouteArea = dockInset as Feature<Polygon | MultiPolygon>;
-  }
-
   const { points: allPoints, dockExitLength, dockEntryLength } =
-    addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, dockRouteArea);
+    addDockPaths(dockPath, dockExitDistance, effectiveStartPoint, mowPoints, safeAreaWithHoles, routeInsetArea);
 
   return buildResult(allPoints, speed, turns, perimeterAreaSqm, innerAreaSqm, dockExitLength, dockEntryLength);
 }
@@ -626,9 +481,10 @@ export function generateMowPath(params: {
  * Add dock exit/entry paths around the mow points.
  * Returns the full path AND the number of points belonging to dock exit/entry.
  *
- * @param dockRouteArea Further-inset polygon for routing dock connections.
- *   This ensures the dock path maintains clearance from boundaries by routing
- *   inside the first perimeter pass rather than right on the mowArea edge.
+ * The dock path itself (the user-drawn LineString from dock to garden entry)
+ * is used as-is — it may cross garden boundaries because the dock is at the edge.
+ * The CONNECTION from dock path end to the first mow point uses safeRoute with
+ * insetArea to maintain clearance from boundaries.
  */
 function addDockPaths(
   dockPath: [number, number][] | undefined,
@@ -636,7 +492,7 @@ function addDockPaths(
   startPoint: [number, number] | undefined,
   mowPoints: [number, number][],
   safeArea: Feature<Polygon | MultiPolygon>,
-  dockRouteArea: Feature<Polygon | MultiPolygon>
+  insetArea?: Feature<Polygon | MultiPolygon>
 ): { points: [number, number][]; dockExitLength: number; dockEntryLength: number } {
   if (mowPoints.length === 0) {
     return { points: mowPoints, dockExitLength: 0, dockEntryLength: 0 };
@@ -652,24 +508,18 @@ function addDockPaths(
     exitPart.push(startPoint);
   }
 
-  // Connection from start point to first mow point
-  // Routes through dockRouteArea (further inset) so the connection path
-  // maintains extra clearance from boundaries. Uses safeArea for validation
-  // (canConnect) to allow the from/to points which may lie on the safeArea edge.
-  // Nodes from BOTH safeArea and dockRouteArea are included so Dijkstra can
-  // step from the edge (safeArea vertex near dock) to the interior (dockRouteArea
-  // vertex) and route the longer segments through the interior.
+  // Connection from dock/start to first mow point — uses unified safeRoute
   if (startPoint && mowPoints.length > 0) {
     const firstMow = mowPoints[0];
     const from = exitPart.length > 0 ? exitPart[exitPart.length - 1] : startPoint;
-    const waypoints = safeRouteDock(from, firstMow, safeArea, dockRouteArea);
+    const waypoints = safeRoute(from, firstMow, safeArea, safeArea, insetArea);
     exitPart.push(...waypoints);
   }
 
   // --- Return: Garden → Dock ---
   if (startPoint && mowPoints.length > 0) {
     const lastMow = mowPoints[mowPoints.length - 1];
-    const waypoints = safeRouteDock(lastMow, startPoint, safeArea, dockRouteArea);
+    const waypoints = safeRoute(lastMow, startPoint, safeArea, safeArea, insetArea);
     entryPart.push(...waypoints);
   }
 
@@ -691,12 +541,7 @@ function addDockPaths(
 /**
  * Generate parallel mowing stripes across a polygon at a given angle.
  *
- * Uses ANGLED SCAN LINES directly in the original coordinate system
- * instead of rotating the polygon. This eliminates floating-point errors
- * from rotate/unrotate transforms that caused stripes to extend outside
- * the polygon boundary.
- *
- * The scan lines are perpendicular to the mowing direction (angle).
+ * Uses ANGLED SCAN LINES directly in the original coordinate system.
  * Intersection points with the polygon boundary are computed via
  * turf.lineIntersect and lie exactly on the polygon edges.
  */
@@ -706,35 +551,26 @@ function generateParallelStripes(
   angleDeg: number,
   checkArea: Feature<Polygon | MultiPolygon>,
   routeArea: Feature<Polygon | MultiPolygon>,
-  startFrom?: [number, number]
+  startFrom?: [number, number],
+  insetArea?: Feature<Polygon | MultiPolygon>
 ): { points: [number, number][]; stripeCount: number } {
   const centroid = turf.centroid(area);
   const [cLon, cLat] = centroid.geometry.coordinates;
 
-  // Convert angle to radians
-  // angleDeg = 0 means N-S stripes → scan lines go E-W
-  // angleDeg = 45 means NE-SW stripes → scan lines go NW-SE
   const angleRad = (angleDeg * Math.PI) / 180;
 
-  // Mowing direction unit vector (in [lon, lat] space, corrected for latitude)
   const cosLat = Math.cos(cLat * (Math.PI / 180));
-  // "step" direction: perpendicular to scan lines, along which we space stripes
-  // This is the mowing direction rotated by 0° (the direction stripes are offset)
-  const stepDLon = (Math.sin(angleRad) / cosLat); // normalized direction
+  const stepDLon = (Math.sin(angleRad) / cosLat);
   const stepDLat = Math.cos(angleRad);
   const stepLen = Math.sqrt(stepDLon * stepDLon + stepDLat * stepDLat);
   const stepNLon = stepDLon / stepLen;
   const stepNLat = stepDLat / stepLen;
 
-  // Scan line direction: perpendicular to step direction (rotate 90°)
   const scanDLon = -stepNLat;
   const scanDLat = stepNLon;
 
-  // Spacing in degrees (approximate)
   const spacingDeg = spacing / 111320;
 
-  // Determine how far we need to go in the step direction
-  // Project all bbox corners onto the step axis to find min/max
   const [minLon, minLat, maxLon, maxLat] = turf.bbox(area);
   const corners: [number, number][] = [
     [minLon, minLat],
@@ -743,31 +579,26 @@ function generateParallelStripes(
     [minLon, maxLat],
   ];
 
-  // Project each corner onto the step axis (dot product with step normal)
   const projections = corners.map(
     ([lon, lat]) => (lon - cLon) * stepNLon + (lat - cLat) * stepNLat
   );
   const minProj = Math.min(...projections);
   const maxProj = Math.max(...projections);
 
-  // Scan line half-length: project corners onto scan axis for extent
   const scanProjections = corners.map(
     ([lon, lat]) => (lon - cLon) * scanDLon + (lat - cLat) * scanDLat
   );
   const scanExtent =
     Math.max(...scanProjections) - Math.min(...scanProjections);
-  const scanHalf = scanExtent / 2 + 0.001; // small margin
+  const scanHalf = scanExtent / 2 + 0.001;
 
   const stripes: [number, number][][] = [];
 
-  // Step from minProj to maxProj, generating scan lines
   let d = minProj + spacingDeg / 2;
   while (d < maxProj) {
-    // Center of this scan line
     const lineCenterLon = cLon + d * stepNLon;
     const lineCenterLat = cLat + d * stepNLat;
 
-    // Scan line endpoints (long enough to cross the entire polygon)
     const lineCoords: Position[] = [
       [
         lineCenterLon - scanHalf * scanDLon,
@@ -783,20 +614,17 @@ function generateParallelStripes(
     const intersections = findLinePolygonIntersections(scanLine, area);
 
     if (intersections.length >= 2) {
-      // Sort intersections along the scan direction
       intersections.sort((a, b) => {
         const projA = (a[0] - lineCenterLon) * scanDLon + (a[1] - lineCenterLat) * scanDLat;
         const projB = (b[0] - lineCenterLon) * scanDLon + (b[1] - lineCenterLat) * scanDLat;
         return projA - projB;
       });
 
-      // Take pairwise (entry/exit) as stripe segments
       for (let i = 0; i < intersections.length - 1; i += 2) {
         const entry = intersections[i];
         const exit = intersections[i + 1];
         if (!exit) continue;
 
-        // Intersection points are in [lon, lat] (GeoJSON), convert to [lat, lon]
         const startPt: [number, number] = [entry[1], entry[0]];
         const endPt: [number, number] = [exit[1], exit[0]];
 
@@ -855,10 +683,10 @@ function generateParallelStripes(
       ? [...stripes[bestIdx]].reverse()
       : stripes[bestIdx];
 
-    // Safe connection via polygon edge projection
+    // Safe connection — uses unified safeRoute with insetArea for clearance
     if (currentPos !== null) {
       const target = stripe[0];
-      const routeWaypoints = safeRoute(currentPos, target, checkArea, routeArea);
+      const routeWaypoints = safeRoute(currentPos, target, checkArea, routeArea, insetArea);
       result.push(...routeWaypoints);
     }
 

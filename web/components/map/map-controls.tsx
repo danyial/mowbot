@@ -1,6 +1,6 @@
 "use client";
 
-import { MutableRefObject, useCallback, useEffect, useState } from "react";
+import { MutableRefObject, useState } from "react";
 import {
   Crosshair,
   Navigation,
@@ -97,26 +97,6 @@ export function MapControls({
   const [showZoneMenu, setShowZoneMenu] = useState(false);
   const [zoneName, setZoneName] = useState("");
   const [showNameInput, setShowNameInput] = useState(false);
-
-  // Handle drawing close event from ZoneDrawHandler
-  const handleDrawingClose = useCallback(() => {
-    if (editMode === "draw" && drawingPoints.length >= 3) {
-      setShowNameInput(true);
-    }
-  }, [editMode, drawingPoints.length]);
-
-  useEffect(() => {
-    window.addEventListener(
-      "zone-drawing-close-requested",
-      handleDrawingClose
-    );
-    return () => {
-      window.removeEventListener(
-        "zone-drawing-close-requested",
-        handleDrawingClose
-      );
-    };
-  }, [handleDrawingClose]);
 
   const handleCenterOnRobot = () => {
     if (latitude !== null && longitude !== null && mapRef.current) {

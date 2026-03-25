@@ -159,13 +159,7 @@ function DrawingPreview() {
             fillOpacity: 1,
             weight: 2,
           }}
-        >
-          {i === 0 && drawingPoints.length >= 3 && (
-            <Tooltip direction="top" permanent className="text-xs pointer-events-none">
-              Klick zum Schliessen
-            </Tooltip>
-          )}
-        </CircleMarker>
+        />
       ))}
     </>
   );

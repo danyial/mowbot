@@ -91,7 +91,7 @@ export default function RobotMap({
       <MapContainer
         center={center}
         zoom={configZoom}
-        maxZoom={22}
+        maxZoom={24}
         className="h-full w-full z-0"
         zoomControl={false}
         attributionControl={false}
@@ -104,7 +104,7 @@ export default function RobotMap({
         <TileLayer
           key={mapLayer}
           url={tileConfig.url}
-          maxZoom={22}
+          maxZoom={24}
           maxNativeZoom={tileConfig.maxNativeZoom}
         />
         <RobotMarker />

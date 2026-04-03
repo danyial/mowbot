@@ -3,18 +3,32 @@
 robot:
   ros__parameters:
     # Kinematik
-    wheel_separation: 0.20          # Kettenabstand in Metern
-    wheel_radius: 0.065             # Radradius in Metern (130mm Raeder)
+    wheel_separation: 0.20          # Radabstand in Metern
+    wheel_diameter: 0.07            # Raddurchmesser in Metern (70mm Raeder)
+    wheel_radius: 0.035             # Radradius in Metern
 
     # Geschwindigkeitslimits
-    max_linear_speed: 0.5           # m/s
+    max_linear_speed: 0.28          # m/s (76 RPM x pi x 0.07m / 60s)
     max_angular_speed: 1.5          # rad/s
 
-    # ESC PWM
-    esc_left_pin: 25
-    esc_right_pin: 26
-    esc_neutral_us: 1500            # Neutral-Pulsweite in us
-    esc_range_us: 500               # Bereich: 1000-2000us
+    # Motor-Controller: BTS7960 H-Bruecke
+    motor_left_rpwm: 16             # GPIO fuer Links Vorwaerts
+    motor_left_lpwm: 17             # GPIO fuer Links Rueckwaerts
+    motor_left_en: 18               # GPIO fuer Links Enable (R_EN + L_EN)
+    motor_right_rpwm: 19            # GPIO fuer Rechts Vorwaerts
+    motor_right_lpwm: 21            # GPIO fuer Rechts Rueckwaerts
+    motor_right_en: 22              # GPIO fuer Rechts Enable (R_EN + L_EN)
+
+    # Encoder: JGB37-520 (11 Ticks pro Motor-Umdrehung)
+    encoder_left_a: 34              # GPIO Encoder Links Kanal A
+    encoder_left_b: 35              # GPIO Encoder Links Kanal B
+    encoder_right_a: 32             # GPIO Encoder Rechts Kanal A
+    encoder_right_b: 33             # GPIO Encoder Rechts Kanal B
+    encoder_ticks_per_rev: 11       # Ticks pro Motor-Umdrehung
+
+    # PWM
+    pwm_frequency: 1000             # Hz (1 kHz fuer DC-Motoren)
+    pwm_resolution: 8               # Bit (0-255)
 
     # Sicherheit
     cmd_vel_timeout_ms: 500         # Motoren stoppen nach X ms ohne cmd_vel

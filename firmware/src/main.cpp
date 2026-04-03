@@ -5,33 +5,63 @@
 #include <rclc/executor.h>
 #include <geometry_msgs/msg/twist.h>
 
-// === KONFIGURATION ===
-// ESC PWM Pins
-#define ESC_LEFT_PIN   25
-#define ESC_RIGHT_PIN  26
+// ═══════════════════════════════════════════════════════════════════════════
+// PIN CONFIGURATION — BTS7960 H-Bridge + JGB37-520 Encoder Motors
+// ═══════════════════════════════════════════════════════════════════════════
 
+// Motor Links — BTS7960 #1
+#define MOTOR_L_RPWM  16   // Vorwärts PWM
+#define MOTOR_L_LPWM  17   // Rückwärts PWM
+#define MOTOR_L_EN    18   // Enable (R_EN + L_EN zusammen)
+
+// Motor Rechts — BTS7960 #2
+#define MOTOR_R_RPWM  19   // Vorwärts PWM
+#define MOTOR_R_LPWM  21   // Rückwärts PWM
+#define MOTOR_R_EN    22   // Enable (R_EN + L_EN zusammen)
+
+// Encoder Links — JGB37-520
+#define ENCODER_L_A   34   // Kanal A (Input-only Pin)
+#define ENCODER_L_B   35   // Kanal B (Input-only Pin)
+
+// Encoder Rechts — JGB37-520
+#define ENCODER_R_A   32   // Kanal A
+#define ENCODER_R_B   33   // Kanal B
+
+// Debug-LED
+#define LED_PIN       2
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PWM CONFIGURATION — 1 kHz, 8-bit (0-255) ideal für DC-Motoren
+// ═══════════════════════════════════════════════════════════════════════════
+
+#define PWM_FREQ       1000
+#define PWM_RESOLUTION 8
+
+// PWM-Kanäle (ESP32 Arduino Core < 3.x verwendet Kanäle statt Pins)
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  #define ESC_LEFT  ESC_LEFT_PIN
-  #define ESC_RIGHT ESC_RIGHT_PIN
+  // Core 3.x: ledcAttach(pin, freq, resolution) — kein separater Kanal
 #else
-  #define ESC_LEFT  0   // Channel 0
-  #define ESC_RIGHT 1   // Channel 1
+  #define PWM_CH_L_RPWM  0
+  #define PWM_CH_L_LPWM  1
+  #define PWM_CH_R_RPWM  2
+  #define PWM_CH_R_LPWM  3
 #endif
 
-// Debug-LED (eingebaute LED auf den meisten ESP32 DevKits)
-#define LED_PIN 2
+// ═══════════════════════════════════════════════════════════════════════════
+// ROBOT PARAMETERS
+// ═══════════════════════════════════════════════════════════════════════════
 
-// PWM Konfiguration für RC-ESCs
-// ESCs erwarten 50 Hz (20ms Periode)
-// 1000µs = volle Rückwärts, 1500µs = Stop, 2000µs = volle Vorwärts
-#define PWM_FREQ       50
-#define PWM_RESOLUTION 16   // 16-bit = 0-65535
+#define WHEEL_SEPARATION    0.20f   // Radabstand in Metern (20 cm)
+#define WHEEL_DIAMETER      0.07f   // Raddurchmesser in Metern (70 mm)
+#define MAX_SPEED           0.28f   // Max m/s (76 RPM × π × 0.07m / 60s)
+#define ENCODER_TICKS_REV   11      // Encoder-Ticks pro Motor-Umdrehung
+#define CMD_TIMEOUT_MS      500     // Motoren stoppen nach X ms ohne cmd_vel
 
-// Roboter-Parameter
-#define WHEEL_SEPARATION 0.20  // Kettenabstand in Metern (ca. 20cm)
-#define MAX_SPEED        0.5   // max m/s
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBALS
+// ═══════════════════════════════════════════════════════════════════════════
 
-// micro-ROS Objekte
+// micro-ROS
 rcl_subscription_t cmd_vel_sub;
 geometry_msgs__msg__Twist cmd_vel_msg;
 rclc_executor_t executor;
@@ -39,98 +69,159 @@ rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
 
-// Watchdog: stoppe wenn keine Befehle kommen
+// Timing
 unsigned long last_cmd_time = 0;
-#define CMD_TIMEOUT_MS 500
 
-// micro-ROS Verbindungsstatus
+// Encoder (volatile — ISR-Zugriff)
+volatile long encoder_left_count = 0;
+volatile long encoder_right_count = 0;
+
+// State Machine
 enum AgentState { WAITING_AGENT, AGENT_AVAILABLE, AGENT_CONNECTED, AGENT_DISCONNECTED };
 AgentState agent_state = WAITING_AGENT;
 
-// LED-Blink Status
+// LED
 unsigned long last_led_toggle = 0;
 bool led_on = false;
 
-// Zähler für empfangene cmd_vel Nachrichten (Diagnose)
+// Diagnose
 volatile unsigned long cmd_vel_count = 0;
 
-// µs → PWM Duty Cycle (16-bit bei 50 Hz)
-uint32_t us_to_duty(int microseconds) {
-  // Bei 50 Hz = 20000µs Periode, 16-bit = 65535
-  return (uint32_t)((float)microseconds / 20000.0f * 65535.0f);
+// ═══════════════════════════════════════════════════════════════════════════
+// ENCODER ISRs
+// ═══════════════════════════════════════════════════════════════════════════
+
+void IRAM_ATTR encoder_left_isr() {
+  if (digitalRead(ENCODER_L_B)) encoder_left_count++;
+  else encoder_left_count--;
 }
 
-// ESC-Totzone überspringen: RC-Auto ESCs ignorieren kleine Werte um Neutral.
-// Mappe den Eingangsbereich (5%-100%) auf den ESC-Bereich (15%-100%),
-// sodass selbst kleine Joystick-Bewegungen den Motor aktivieren.
-float apply_deadzone(float value) {
-  if (fabs(value) < 0.05f) return 0.0f;  // Unter 5% → stopp
-  float sign = (value > 0.0f) ? 1.0f : -1.0f;
-  return sign * (0.15f + fabs(value) * 0.85f);
+void IRAM_ATTR encoder_right_isr() {
+  if (digitalRead(ENCODER_R_B)) encoder_right_count++;
+  else encoder_right_count--;
 }
 
-// Geschwindigkeit (-1.0 bis +1.0) → ESC PWM (1000-2000µs)
-void set_esc(int pin_or_channel, float speed) {
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTOR CONTROL — BTS7960
+//
+// BTS7960 Logik:
+//   Vorwärts:  RPWM = PWM-Wert, LPWM = 0
+//   Rückwärts: RPWM = 0,        LPWM = PWM-Wert
+//   Stopp:     RPWM = 0,        LPWM = 0
+//   Enable muss HIGH sein (im setup() gesetzt)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+
+void set_motor(int rpwm_pin, int lpwm_pin, float speed) {
   speed = constrain(speed, -1.0f, 1.0f);
-  speed = apply_deadzone(speed);
-  int pulse_us = 1500 + (int)(speed * 500.0f);
-  ledcWrite(pin_or_channel, us_to_duty(pulse_us));
+  if (speed > 0.05f) {
+    ledcWrite(rpwm_pin, (int)(speed * 255.0f));
+    ledcWrite(lpwm_pin, 0);
+  } else if (speed < -0.05f) {
+    ledcWrite(rpwm_pin, 0);
+    ledcWrite(lpwm_pin, (int)((-speed) * 255.0f));
+  } else {
+    ledcWrite(rpwm_pin, 0);
+    ledcWrite(lpwm_pin, 0);
+  }
 }
 
-// cmd_vel Callback: Differential Drive Kinematik
+#else
+
+void set_motor(int rpwm_ch, int lpwm_ch, float speed) {
+  speed = constrain(speed, -1.0f, 1.0f);
+  if (speed > 0.05f) {
+    ledcWrite(rpwm_ch, (int)(speed * 255.0f));
+    ledcWrite(lpwm_ch, 0);
+  } else if (speed < -0.05f) {
+    ledcWrite(rpwm_ch, 0);
+    ledcWrite(lpwm_ch, (int)((-speed) * 255.0f));
+  } else {
+    ledcWrite(rpwm_ch, 0);
+    ledcWrite(lpwm_ch, 0);
+  }
+}
+
+#endif
+
+void stop_motors() {
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    set_motor(MOTOR_L_RPWM, MOTOR_L_LPWM, 0.0f);
+    set_motor(MOTOR_R_RPWM, MOTOR_R_LPWM, 0.0f);
+  #else
+    set_motor(PWM_CH_L_RPWM, PWM_CH_L_LPWM, 0.0f);
+    set_motor(PWM_CH_R_RPWM, PWM_CH_R_LPWM, 0.0f);
+  #endif
+}
+
+void set_motor_left(float speed) {
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    set_motor(MOTOR_L_RPWM, MOTOR_L_LPWM, speed);
+  #else
+    set_motor(PWM_CH_L_RPWM, PWM_CH_L_LPWM, speed);
+  #endif
+}
+
+void set_motor_right(float speed) {
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    set_motor(MOTOR_R_RPWM, MOTOR_R_LPWM, speed);
+  #else
+    set_motor(PWM_CH_R_RPWM, PWM_CH_R_LPWM, speed);
+  #endif
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// cmd_vel CALLBACK — Differential Drive Kinematik
+// ═══════════════════════════════════════════════════════════════════════════
+
 void cmd_vel_callback(const void* msgin) {
   const geometry_msgs__msg__Twist* msg =
     (const geometry_msgs__msg__Twist*)msgin;
 
-  float linear  = msg->linear.x;   // m/s vorwärts/rückwärts
-  float angular = msg->angular.z;   // rad/s Drehung
+  float linear  = msg->linear.x;
+  float angular = msg->angular.z;
 
-  // Differential Drive: v_left = linear - angular * (track/2)
-  //                     v_right = linear + angular * (track/2)
+  // Differential Drive
   float v_left  = linear - angular * (WHEEL_SEPARATION / 2.0f);
   float v_right = linear + angular * (WHEEL_SEPARATION / 2.0f);
 
   // Normalisieren auf -1.0 .. +1.0
-  float scale_left  = v_left  / MAX_SPEED;
-  float scale_right = v_right / MAX_SPEED;
-
-  set_esc(ESC_LEFT, scale_left);
-  set_esc(ESC_RIGHT, scale_right);
+  set_motor_left(constrain(v_left / MAX_SPEED, -1.0f, 1.0f));
+  set_motor_right(constrain(v_right / MAX_SPEED, -1.0f, 1.0f));
 
   last_cmd_time = millis();
   cmd_vel_count++;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// micro-ROS ENTITY MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
 bool create_microros_entities() {
   allocator = rcl_get_default_allocator();
-
-  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK)
-    return false;
-  if (rclc_node_init_default(&node, "mower_motor_controller", "", &support) != RCL_RET_OK)
-    return false;
+  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) return false;
+  if (rclc_node_init_default(&node, "mower_motor_controller", "", &support) != RCL_RET_OK) return false;
   if (rclc_subscription_init_default(&cmd_vel_sub, &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel") != RCL_RET_OK)
-    return false;
-  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK)
-    return false;
+      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel") != RCL_RET_OK) return false;
+  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK) return false;
   if (rclc_executor_add_subscription(&executor, &cmd_vel_sub,
-      &cmd_vel_msg, &cmd_vel_callback, ON_NEW_DATA) != RCL_RET_OK)
-    return false;
-
+      &cmd_vel_msg, &cmd_vel_callback, ON_NEW_DATA) != RCL_RET_OK) return false;
   return true;
 }
 
 void destroy_microros_entities() {
   rclc_executor_fini(&executor);
   rcl_ret_t rc;
-  rc = rcl_subscription_fini(&cmd_vel_sub, &node);
-  (void)rc;
-  rc = rcl_node_fini(&node);
-  (void)rc;
+  rc = rcl_subscription_fini(&cmd_vel_sub, &node); (void)rc;
+  rc = rcl_node_fini(&node); (void)rc;
   rclc_support_fini(&support);
 }
 
-// LED blinken lassen mit variabler Geschwindigkeit
+// ═══════════════════════════════════════════════════════════════════════════
+// LED HELPER
+// ═══════════════════════════════════════════════════════════════════════════
+
 void blink_led(unsigned long interval_ms) {
   if (millis() - last_led_toggle >= interval_ms) {
     led_on = !led_on;
@@ -139,78 +230,109 @@ void blink_led(unsigned long interval_ms) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SETUP
+// ═══════════════════════════════════════════════════════════════════════════
+
 void setup() {
-  // Debug-LED
+  // LED
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);  // LED an beim Start
+  digitalWrite(LED_PIN, HIGH);
 
   Serial.begin(115200);
 
-  // PWM für ESCs konfigurieren
+  // BTS7960 Enable-Pins → HIGH (aktiviert beide H-Brücken)
+  pinMode(MOTOR_L_EN, OUTPUT);
+  pinMode(MOTOR_R_EN, OUTPUT);
+  digitalWrite(MOTOR_L_EN, HIGH);
+  digitalWrite(MOTOR_R_EN, HIGH);
+
+  // PWM-Kanäle für die 4 Motor-Pins konfigurieren
   #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(ESC_LEFT, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttach(ESC_RIGHT, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttach(MOTOR_L_RPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttach(MOTOR_L_LPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttach(MOTOR_R_RPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttach(MOTOR_R_LPWM, PWM_FREQ, PWM_RESOLUTION);
   #else
-  ledcSetup(0, PWM_FREQ, PWM_RESOLUTION);
-  ledcSetup(1, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttachPin(ESC_LEFT_PIN, 0);
-  ledcAttachPin(ESC_RIGHT_PIN, 1);
+    ledcSetup(PWM_CH_L_RPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcSetup(PWM_CH_L_LPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcSetup(PWM_CH_R_RPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcSetup(PWM_CH_R_LPWM, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttachPin(MOTOR_L_RPWM, PWM_CH_L_RPWM);
+    ledcAttachPin(MOTOR_L_LPWM, PWM_CH_L_LPWM);
+    ledcAttachPin(MOTOR_R_RPWM, PWM_CH_R_RPWM);
+    ledcAttachPin(MOTOR_R_LPWM, PWM_CH_R_LPWM);
   #endif
 
-  // ESCs auf Neutral (1500µs) — 3 Sekunden warten für ESC-Initialisierung
-  set_esc(ESC_LEFT, 0.0f);
-  set_esc(ESC_RIGHT, 0.0f);
-  delay(3000);
+  // Motoren stoppen
+  stop_motors();
+
+  // Encoder-Pins
+  pinMode(ENCODER_L_A, INPUT_PULLUP);
+  pinMode(ENCODER_L_B, INPUT_PULLUP);
+  pinMode(ENCODER_R_A, INPUT_PULLUP);
+  pinMode(ENCODER_R_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_L_A), encoder_left_isr, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_R_A), encoder_right_isr, RISING);
 
   // ============================================================
-  // DIAGNOSE: Kurzer Motor-Impuls um ESC+PWM Funktion zu testen
-  // ENTFERNEN wenn Motoren funktionieren!
+  // DIAGNOSE: Motor-Test-Impuls
+  // ENTFERNEN wenn Motoren bestätigt funktionieren!
   // ============================================================
-  // LED aus → Impuls startet
+
+  // 5 Sekunden warten — Zeit zum Einschalten der 12V Versorgung
+  delay(5000);
+
+  // LED aus → Vorwärts-Impuls
   digitalWrite(LED_PIN, LOW);
   delay(200);
+  set_motor_left(0.3f);
+  set_motor_right(0.3f);
+  digitalWrite(LED_PIN, HIGH);
+  delay(1000);
 
-  // 30% vorwärts für 500ms (muss über der ESC-Totzone von ~10-15% liegen)
-  set_esc(ESC_LEFT, 0.3f);
-  set_esc(ESC_RIGHT, 0.3f);
-  digitalWrite(LED_PIN, HIGH);  // LED an während Impuls
-  delay(500);
-
-  // Stop
-  set_esc(ESC_LEFT, 0.0f);
-  set_esc(ESC_RIGHT, 0.0f);
+  // Stopp
+  stop_motors();
   digitalWrite(LED_PIN, LOW);
   delay(500);
 
-  // 3x schnelles LED-Blinken = Setup fertig
+  // Rückwärts-Impuls
+  set_motor_left(-0.3f);
+  set_motor_right(-0.3f);
+  digitalWrite(LED_PIN, HIGH);
+  delay(1000);
+
+  // Stopp
+  stop_motors();
+  digitalWrite(LED_PIN, LOW);
+  delay(500);
+
+  // 3x LED blinken = Setup fertig
   for (int i = 0; i < 3; i++) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(100);
-    digitalWrite(LED_PIN, LOW);
-    delay(100);
+    digitalWrite(LED_PIN, HIGH); delay(100);
+    digitalWrite(LED_PIN, LOW);  delay(100);
   }
   // ============================================================
 
-  // micro-ROS Transport (Serial)
+  // micro-ROS Transport
   set_microros_serial_transports(Serial);
-
   agent_state = WAITING_AGENT;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN LOOP — State Machine
+// ═══════════════════════════════════════════════════════════════════════════
 
 void loop() {
   switch (agent_state) {
     case WAITING_AGENT:
-      // Langsames Blinken = Warte auf Agent
       blink_led(1000);
-
-      // Warte bis micro-ROS Agent erreichbar ist
       if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
         agent_state = AGENT_AVAILABLE;
       }
       break;
 
     case AGENT_AVAILABLE:
-      // Agent gefunden, Entities erstellen
       if (create_microros_entities()) {
         last_cmd_time = millis();
         cmd_vel_count = 0;
@@ -222,32 +344,24 @@ void loop() {
       break;
 
     case AGENT_CONNECTED: {
-      // LED blinkt IMMER im Connected-State (Beweis dass Loop läuft)
-      // Geschwindigkeit zeigt Status an:
-      //   500ms = verbunden, kein cmd_vel
-      //   100ms = cmd_vel wird empfangen
       if (millis() - last_cmd_time <= CMD_TIMEOUT_MS) {
         blink_led(100);   // Schnell = empfängt cmd_vel
       } else {
         blink_led(500);   // Mittel = verbunden, idle
       }
 
-      // Executor verarbeitet eingehende Nachrichten
-      // 10ms Spin-Time damit der Loop schnell durchläuft
+      // Executor — KEIN Ping im Connected-State
       rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
 
-      // Safety: Stoppe Motoren wenn kein cmd_vel seit CMD_TIMEOUT_MS
+      // Watchdog
       if (millis() - last_cmd_time > CMD_TIMEOUT_MS) {
-        set_esc(ESC_LEFT, 0.0f);
-        set_esc(ESC_RIGHT, 0.0f);
+        stop_motors();
       }
       break;
     }
 
     case AGENT_DISCONNECTED:
-      // Motoren stoppen und aufräumen
-      set_esc(ESC_LEFT, 0.0f);
-      set_esc(ESC_RIGHT, 0.0f);
+      stop_motors();
       destroy_microros_entities();
       agent_state = WAITING_AGENT;
       digitalWrite(LED_PIN, LOW);

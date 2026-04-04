@@ -9,17 +9,21 @@ x-ros-common: &ros-common
 services:
 
   # ============================================
-  # micro-ROS Agent — ESP32 Motorcontroller
+  # micro-ROS Agent — ESP32-C3 Motorcontroller
+  # Kommunikation via UART (Pi GPIO14/15 <-> ESP32-C3 GPIO20/21)
+  # Pi Serial-Konsole muss deaktiviert sein:
+  #   sudo raspi-config -> Interface Options -> Serial Port
+  #   -> Login Shell: No, Hardware: Yes
   # ============================================
   micro-ros-agent:
     <<: *ros-common
     image: ghcr.io/danyial/mowbot/micro-ros-agent:latest
     container_name: mower-micro-ros
     devices:
-      - ${ESP32_DEVICE:-/dev/ttyESP32}:/dev/ttyESP32
+      - ${ESP32_DEVICE:-/dev/ttyAMA0}:/dev/ttyAMA0
     command: >
       ros2 run micro_ros_agent micro_ros_agent
-      serial --dev /dev/ttyESP32 -b 115200
+      serial --dev /dev/ttyAMA0 -b 115200
 
   # ============================================
   # GNSS — NMEA NavSat Driver (UM980)

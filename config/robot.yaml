@@ -1,5 +1,7 @@
-# Roboter-Parameter
-# Diese Werte muessen an das jeweilige Chassis angepasst werden
+# MowerBot Robot Parameters
+# ESP32-C3-DevKitM-1 + BTS7960 H-Bridge + JGB37-520 Encoder Motors
+# Pi HAT Design — UART Communication (no USB cable)
+
 robot:
   ros__parameters:
     # Kinematik
@@ -11,20 +13,29 @@ robot:
     max_linear_speed: 0.28          # m/s (76 RPM x pi x 0.07m / 60s)
     max_angular_speed: 1.5          # rad/s
 
-    # Motor-Controller: BTS7960 H-Bruecke
-    motor_left_rpwm: 16             # GPIO fuer Links Vorwaerts
-    motor_left_lpwm: 17             # GPIO fuer Links Rueckwaerts
-    motor_left_en: 18               # GPIO fuer Links Enable (R_EN + L_EN)
-    motor_right_rpwm: 19            # GPIO fuer Rechts Vorwaerts
-    motor_right_lpwm: 21            # GPIO fuer Rechts Rueckwaerts
-    motor_right_en: 22              # GPIO fuer Rechts Enable (R_EN + L_EN)
+    # Motor-Controller: BTS7960 H-Bruecke (ESP32-C3 GPIOs)
+    motor_left_rpwm: 0              # GPIO0 -> J_SIG_L Pin 1
+    motor_left_lpwm: 1              # GPIO1 -> J_SIG_L Pin 2
+    motor_left_en: 2                # GPIO2 -> J_SIG_L Pin 3+4 (mit Pull-down R1)
+    motor_right_rpwm: 3             # GPIO3 -> J_SIG_R Pin 1
+    motor_right_lpwm: 4             # GPIO4 -> J_SIG_R Pin 2
+    motor_right_en: 5               # GPIO5 -> J_SIG_R Pin 3+4 (mit Pull-down R2)
 
     # Encoder: JGB37-520 (11 Ticks pro Motor-Umdrehung)
-    encoder_left_a: 34              # GPIO Encoder Links Kanal A
-    encoder_left_b: 35              # GPIO Encoder Links Kanal B
-    encoder_right_a: 32             # GPIO Encoder Rechts Kanal A
-    encoder_right_b: 33             # GPIO Encoder Rechts Kanal B
+    encoder_left_a: 6               # GPIO6 -> J_ENC_L Pin 1
+    encoder_left_b: 7               # GPIO7 -> J_ENC_L Pin 2
+    encoder_right_a: 10             # GPIO10 -> J_ENC_R Pin 1
+    encoder_right_b: 9              # GPIO9 -> J_ENC_R Pin 2
     encoder_ticks_per_rev: 11       # Ticks pro Motor-Umdrehung
+
+    # UART (ESP32-C3 <-> Raspberry Pi, via Pi HAT PCB traces)
+    uart_rx_pin: 20                 # GPIO20 <- Pi GPIO14 (TXD)
+    uart_tx_pin: 21                 # GPIO21 -> Pi GPIO15 (RXD)
+    uart_baud_rate: 115200
+
+    # WS2812 RGB Status LED (onboard ESP32-C3-DevKitM-1)
+    led_pin: 8                      # GPIO8 — WS2812 addressable RGB
+    led_brightness: 50              # 0-255
 
     # PWM
     pwm_frequency: 1000             # Hz (1 kHz fuer DC-Motoren)

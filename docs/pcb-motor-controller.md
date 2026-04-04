@@ -1,291 +1,480 @@
-# MowerBot Motor Controller PCB
+# MowerBot Motor Controller PCB — Raspberry Pi HAT v2.0
 
-## Übersicht
+## Uebersicht
 
-Ein PCB das den ESP32 DevKit V1 mit zwei BTS7960 H-Brücken-Modulen und zwei JGB37-520 Encoder-Motoren verbindet. Das Board übernimmt die Stromversorgung (12V → 5V Step-Down), Signalverteilung und Sicherheits-Pull-downs.
+Ein Raspberry Pi HAT (Hardware Attached on Top) das direkt auf den Raspberry Pi 4
+gesteckt wird. Es verbindet einen ESP32-C3-DevKitM-1 Mikrocontroller mit zwei
+BTS7960 H-Bruecken-Modulen und zwei JGB37-520 Encoder-Motoren.
+
+Eine einzige 12V Stromquelle (Akku mit XT60-Stecker) versorgt ueber ein MINI560
+Step-Down Modul (5V/5A) sowohl den Pi als auch den ESP32. Die Kommunikation
+zwischen ESP32 und Pi erfolgt ueber UART (keine USB-Kabel noetig).
+
+Der 40-Pin Pi GPIO Header wird als Stacking Header (Pass-Through) ausgefuehrt,
+sodass alle nicht genutzten Pi-Pins fuer zukuenftige Erweiterungen zugaenglich
+bleiben (z.B. I2C-Sensoren, SPI-Geraete, weitere HATs).
 
 ## Blockdiagramm
 
 ```
-                    ┌──────────────────────────────┐
-                    │     MowerBot Motor PCB        │
-                    │                              │
-  12V Akku ──→ [J7] ──→ D1 ──→ LM2596 ──→ 5V ──→ ESP32 VIN
-                    │              │               │
-                    │             GND              │
-                    │                              │
-                    │    ┌─────────┴─────────┐     │
-                    │    │    ESP32 DevKit    │     │
-                    │    │                   │     │
-              [J1] ←──── │ GP16,17,18 (L)    │     │
-              [J2] ←──── │ GP19,21,22 (R)    │     │
-              [J3] ────→ │ GP34,35 (Enc L)   │     │
-              [J4] ────→ │ GP32,33 (Enc R)   │     │
-                    │    │                   │     │
-                    │    │ USB ──→ [J5: Pi]  │     │
-                    │    └───────────────────┘     │
-                    └──────────────────────────────┘
+12V Akku --[XT60]--> [J7] --> [MINI560] --> 5V Rail
+                         |                      |
+                         |                 +---------+
+                         |                 |         |
+                         |            [Pi 5V]   [ESP32 5V]
+                         |
+                         +--> BTS7960 #1 B+ (ueber J_PWR_L)
+                         +--> BTS7960 #2 B+ (ueber J_PWR_R)
+
+Pi GPIO14/15 (UART) <--PCB Traces--> ESP32-C3 GPIO20/21 (UART)
+
+ESP32-C3 GPIO0-5 --> BTS7960 #1 + #2 (PWM + Enable)
+ESP32-C3 GPIO6,7,9,10 <-- Encoder #1 + #2
 ```
+
+## Board-Spezifikation
+
+| Eigenschaft | Wert |
+|-------------|------|
+| Format | Raspberry Pi HAT (verlaengert) |
+| Masse | 65mm x 100mm |
+| Mounting Holes | 6x M2.5 (4 Pi-Standard + 2 Chassis-Stuetze) |
+| Lagen | 2 (F.Cu + B.Cu) |
+| GND-Plane | B.Cu (Unterseite) |
+| Pi-Anbindung | 40-Pin Stacking Header (Pass-Through) |
 
 ## Schaltplan
 
 ### Stromversorgung
 
 ```
-        D1 (SS34)           LM2596 Module
-J7.+12V ──→──|>|──→──┬──→── VIN ──→── VOUT ──→── 5V Rail
-                      │                              │
-                     C1 (100µF/25V)                 C2 (100µF/16V)
-                      │                              │
-J7.GND ──────────────┴──────────────────────────────┴──→── GND Rail
+12V Akku --[XT60 Stecker]--> [XT60 Buchse + Kabel]
+                                      |
+                                [J7: 2-Pin Schraubklemme, RM 5.08mm]
+                                      | Pin 1: +12V
+                                      | Pin 2: GND
+                                      |
+                                 12V Rail (PCB Traces >= 2mm breit)
+                                      |
+                                      +--> [C1: 100uF/25V Elko] --> GND
+                                      |
+                                      +--> [U2: MINI560 Step-Down]
+                                      |       Input+  <- 12V Rail
+                                      |       Input-  <- GND
+                                      |       Output+ -> 5V Rail
+                                      |       Output- -> GND
+                                      |       EN      -> nicht verbunden (Default: ON)
+                                      |           |
+                                      |           +--> [C2: 100uF/16V Elko] --> GND
+                                      |           +--> [C3: 100nF Keramik] --> GND
+                                      |           +--> Pi 5V (J_PI Pin 2 + Pin 4)
+                                      |           +--> ESP32-C3 5V (U1 J1.13 + J1.14)
+                                      |
+                                      +--> [J_PWR_L Pin 1: B+] (-> BTS7960 #1)
+                                      |    [J_PWR_L Pin 2: B-] (-> BTS7960 #1 GND)
+                                      |
+                                      +--> [J_PWR_R Pin 1: B+] (-> BTS7960 #2)
+                                           [J_PWR_R Pin 2: B-] (-> BTS7960 #2 GND)
 ```
 
-Die Schottky-Diode D1 (SS34) schützt vor Verpolung. C1 puffert die 12V Eingangsspannung, C2 puffert die 5V Ausgangsspannung des Step-Down Reglers.
+Kein Verpolschutz (Diode) noetig — der XT60-Stecker ist mechanisch
+verpolungssicher und kann nicht falsch herum eingesteckt werden.
 
-### ESP32 Stromversorgung
+### Raspberry Pi 40-Pin Stacking Header (J_PI)
+
+Nur die genutzten Pins — alle anderen werden durchgefuehrt (Pass-Through)
+und sind fuer zukuenftige Erweiterungen verfuegbar.
+
+| Pi Pin | Name | Funktion | Verbindung |
+|--------|------|----------|------------|
+| 2 | 5V | Stromversorgung | <- 5V Rail (MINI560) |
+| 4 | 5V | Stromversorgung | <- 5V Rail (MINI560) |
+| 6 | GND | Masse | GND Rail |
+| 8 | GPIO14 (TXD) | UART TX | -> ESP32-C3 RX (GPIO20) |
+| 9 | GND | Masse | GND Rail |
+| 10 | GPIO15 (RXD) | UART RX | <- ESP32-C3 TX (GPIO21) |
+| 14 | GND | Masse | GND Rail |
+| 20 | GND | Masse | GND Rail |
+| 25 | GND | Masse | GND Rail |
+| 30 | GND | Masse | GND Rail |
+| 34 | GND | Masse | GND Rail |
+| 39 | GND | Masse | GND Rail |
+
+Freie Pins (ueber Stacking Header zugaenglich):
+- I2C: Pin 3 (SDA), Pin 5 (SCL)
+- SPI: Pin 19 (MOSI), Pin 21 (MISO), Pin 23 (SCLK), Pin 24 (CE0), Pin 26 (CE1)
+- 16 weitere GPIOs
+
+### ESP32-C3-DevKitM-1 (U1)
+
+Das Board hat zwei Header (J1 und J3), jeweils 15 Pins.
+
+**J1 (linke Seite):**
+
+| Pin | Name | Funktion | Verbindung |
+|-----|------|----------|------------|
+| 1 | GND | Masse | GND Rail |
+| 2 | 3V3 | 3.3V | 3V3 Rail |
+| 3 | 3V3 | 3.3V | 3V3 Rail |
+| 4 | IO2 | GPIO2 | -> Motor L Enable (J_SIG_L Pin 3+4) + R1 |
+| 5 | IO3 | GPIO3 | -> Motor R RPWM (J_SIG_R Pin 1) |
+| 6 | GND | Masse | GND Rail |
+| 7 | RST | Reset | Nicht verbunden |
+| 8 | GND | Masse | GND Rail |
+| 9 | IO0 | GPIO0 | -> Motor L RPWM (J_SIG_L Pin 1) |
+| 10 | IO1 | GPIO1 | -> Motor L LPWM (J_SIG_L Pin 2) |
+| 11 | IO10 | GPIO10 | <- Encoder R A (J_ENC_R Pin 1) |
+| 12 | GND | Masse | GND Rail |
+| 13 | 5V | 5V | <- 5V Rail |
+| 14 | 5V | 5V | <- 5V Rail |
+| 15 | GND | Masse | GND Rail |
+
+**J3 (rechte Seite):**
+
+| Pin | Name | Funktion | Verbindung |
+|-----|------|----------|------------|
+| 1 | GND | Masse | GND Rail |
+| 2 | TX | GPIO21 (UART TX) | -> Pi GPIO15 (RXD) via PCB Trace |
+| 3 | RX | GPIO20 (UART RX) | <- Pi GPIO14 (TXD) via PCB Trace |
+| 4 | GND | Masse | GND Rail |
+| 5 | IO9 | GPIO9 | <- Encoder R B (J_ENC_R Pin 2) |
+| 6 | IO8 | GPIO8 | RGB LED — nicht verwenden |
+| 7 | GND | Masse | GND Rail |
+| 8 | IO7 | GPIO7 | <- Encoder L B (J_ENC_L Pin 2) |
+| 9 | IO6 | GPIO6 | <- Encoder L A (J_ENC_L Pin 1) |
+| 10 | IO5 | GPIO5 | -> Motor R Enable (J_SIG_R Pin 3+4) + R2 |
+| 11 | IO4 | GPIO4 | -> Motor R LPWM (J_SIG_R Pin 2) |
+| 12 | GND | Masse | GND Rail |
+| 13 | IO18 | GPIO18 | USB D- — nicht verwenden |
+| 14 | IO19 | GPIO19 | USB D+ — nicht verwenden |
+| 15 | GND | Masse | GND Rail |
+
+### BTS7960 Links — Signal (J_SIG_L, 6-Pin Header, RM 2.54mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | RPWM | <- ESP32-C3 GPIO0 |
+| 2 | LPWM | <- ESP32-C3 GPIO1 |
+| 3 | R_EN | <- ESP32-C3 GPIO2 + R1 (10k -> GND) |
+| 4 | L_EN | <- ESP32-C3 GPIO2 (zusammen mit R_EN) |
+| 5 | VCC | <- 3V3 Rail |
+| 6 | GND | GND Rail |
+
+### BTS7960 Rechts — Signal (J_SIG_R, 6-Pin Header, RM 2.54mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | RPWM | <- ESP32-C3 GPIO3 |
+| 2 | LPWM | <- ESP32-C3 GPIO4 |
+| 3 | R_EN | <- ESP32-C3 GPIO5 + R2 (10k -> GND) |
+| 4 | L_EN | <- ESP32-C3 GPIO5 (zusammen mit R_EN) |
+| 5 | VCC | <- 3V3 Rail |
+| 6 | GND | GND Rail |
+
+### BTS7960 Links — Leistung (J_PWR_L, 2-Pin Schraubklemme, RM 5.08mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | B+ | <- 12V Rail |
+| 2 | B- | GND Rail |
+
+### BTS7960 Rechts — Leistung (J_PWR_R, 2-Pin Schraubklemme, RM 5.08mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | B+ | <- 12V Rail |
+| 2 | B- | GND Rail |
+
+### Encoder Links (J_ENC_L, 4-Pin Header, RM 2.54mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | A | -> ESP32-C3 GPIO6 |
+| 2 | B | -> ESP32-C3 GPIO7 |
+| 3 | VCC | <- 3V3 Rail |
+| 4 | GND | GND Rail |
+
+### Encoder Rechts (J_ENC_R, 4-Pin Header, RM 2.54mm)
+
+| Pin | Name | Verbindung |
+|-----|------|------------|
+| 1 | A | -> ESP32-C3 GPIO10 |
+| 2 | B | -> ESP32-C3 GPIO9 |
+| 3 | VCC | <- 3V3 Rail |
+| 4 | GND | GND Rail |
+
+### Pull-down Widerstaende (Sicherheit)
 
 ```
-5V Rail ──→── ESP32 VIN
-                  │
-                 C3 (100nF Keramik)
-                  │
-GND Rail ──→── ESP32 GND
+ESP32-C3 GPIO2 --+---> J_SIG_L Pin 3 (R_EN)
+                  +---> J_SIG_L Pin 4 (L_EN)
+                  |
+                 [R1: 10kOhm]
+                  |
+                 GND
+
+ESP32-C3 GPIO5 --+---> J_SIG_R Pin 3 (R_EN)
+                  +---> J_SIG_R Pin 4 (L_EN)
+                  |
+                 [R2: 10kOhm]
+                  |
+                 GND
 ```
 
-Der 100nF Keramik-Kondensator C3 direkt am VIN-Pin des ESP32 filtert hochfrequente Störungen.
+Beim ESP32-Reset oder Boot sind die GPIOs kurzzeitig undefiniert.
+Die Pull-down Widerstaende stellen sicher, dass die BTS7960
+Enable-Pins auf LOW (Motor AUS) bleiben.
 
-### BTS7960 Links (J1)
-
-```
-ESP32 GPIO 16 ────────────→── J1 Pin 1 (RPWM)
-ESP32 GPIO 17 ────────────→── J1 Pin 2 (LPWM)
-ESP32 GPIO 18 ──┬─────────→── J1 Pin 3 (R_EN)
-                 │
-                 ├─────────→── J1 Pin 4 (L_EN)
-                 │
-                R1 (10kΩ)
-                 │
-                GND           ← Pull-down: Motor aus bei ESP32-Reset
-ESP32 3.3V ───────────────→── J1 Pin 5 (VCC)
-GND Rail ─────────────────→── J1 Pin 6 (GND)
-```
-
-R_EN und L_EN werden zusammengebrückt auf GPIO 18. Der Pull-down Widerstand R1 zieht den Enable-Pin auf LOW wenn der ESP32 resettet oder startet, damit die Motoren nicht unkontrolliert anspringen.
-
-### BTS7960 Rechts (J2)
-
-```
-ESP32 GPIO 19 ────────────→── J2 Pin 1 (RPWM)
-ESP32 GPIO 21 ────────────→── J2 Pin 2 (LPWM)
-ESP32 GPIO 22 ──┬─────────→── J2 Pin 3 (R_EN)
-                 │
-                 ├─────────→── J2 Pin 4 (L_EN)
-                 │
-                R2 (10kΩ)
-                 │
-                GND           ← Pull-down: Motor aus bei ESP32-Reset
-ESP32 3.3V ───────────────→── J2 Pin 5 (VCC)
-GND Rail ─────────────────→── J2 Pin 6 (GND)
-```
-
-Identischer Aufbau wie J1, nur mit GPIO 19, 21, 22.
-
-### Encoder Links (J3)
-
-```
-J3 Pin 1 (A)   ──→── ESP32 GPIO 34
-J3 Pin 2 (B)   ──→── ESP32 GPIO 35
-J3 Pin 3 (VCC) ──→── 3.3V Rail
-J3 Pin 4 (GND) ──→── GND Rail
-```
-
-GPIO 34 und 35 sind Input-only Pins auf dem ESP32 — ideal für Encoder-Signale. Die Firmware aktiviert interne Pull-ups.
-
-### Encoder Rechts (J4)
-
-```
-J4 Pin 1 (A)   ──→── ESP32 GPIO 32
-J4 Pin 2 (B)   ──→── ESP32 GPIO 33
-J4 Pin 3 (VCC) ──→── 3.3V Rail
-J4 Pin 4 (GND) ──→── GND Rail
-```
-
-### USB-Verbindung zum Raspberry Pi (J5)
-
-```
-ESP32 Micro-USB ──→── USB-Kabel ──→── Raspberry Pi USB-Port
-```
-
-Dient als micro-ROS Serial Transport (115200 Baud). Kein Platz auf dem PCB nötig — das USB-Kabel des ESP32 DevKit wird direkt zum Pi geführt.
-
-### Optional: I2C Expansion (J6)
-
-```
-J6 Pin 1 (SDA) ──→── ESP32 GPIO 23
-J6 Pin 2 (SCL) ──→── ESP32 GPIO 25
-J6 Pin 3 (VCC) ──→── 3.3V Rail
-J6 Pin 4 (GND) ──→── GND Rail
-```
-
-Für zukünftige Erweiterungen (z.B. IMU-Sensor direkt am ESP32).
-
-## Pin-Belegung ESP32
+## GPIO-Zuordnung ESP32-C3
 
 | GPIO | Funktion | Richtung | Anschluss |
 |------|----------|----------|-----------|
-| 16 | Motor Links RPWM | Output (PWM) | J1 Pin 1 |
-| 17 | Motor Links LPWM | Output (PWM) | J1 Pin 2 |
-| 18 | Motor Links Enable | Output | J1 Pin 3+4 (R_EN+L_EN) |
-| 19 | Motor Rechts RPWM | Output (PWM) | J2 Pin 1 |
-| 21 | Motor Rechts LPWM | Output (PWM) | J2 Pin 2 |
-| 22 | Motor Rechts Enable | Output | J2 Pin 3+4 (R_EN+L_EN) |
-| 34 | Encoder Links A | Input | J3 Pin 1 |
-| 35 | Encoder Links B | Input | J3 Pin 2 |
-| 32 | Encoder Rechts A | Input | J4 Pin 1 |
-| 33 | Encoder Rechts B | Input | J4 Pin 2 |
-| 2 | Status LED | Output | Onboard LED |
-| VIN | 5V Stromversorgung | Power In | LM2596 VOUT |
-| 3.3V | 3.3V Rail | Power Out | J1-J4 VCC, J6 VCC |
-| GND | Masse | Power | Alle GND |
-| 23 | I2C SDA (optional) | I/O | J6 Pin 1 |
-| 25 | I2C SCL (optional) | I/O | J6 Pin 2 |
-| 1 (TX) | Serial TX | Output | USB (micro-ROS) |
-| 3 (RX) | Serial RX | Input | USB (micro-ROS) |
+| 0 | Motor L RPWM | Output (PWM) | J_SIG_L Pin 1 |
+| 1 | Motor L LPWM | Output (PWM) | J_SIG_L Pin 2 |
+| 2 | Motor L Enable | Output | J_SIG_L Pin 3+4 |
+| 3 | Motor R RPWM | Output (PWM) | J_SIG_R Pin 1 |
+| 4 | Motor R LPWM | Output (PWM) | J_SIG_R Pin 2 |
+| 5 | Motor R Enable | Output | J_SIG_R Pin 3+4 |
+| 6 | Encoder L A | Input | J_ENC_L Pin 1 |
+| 7 | Encoder L B | Input | J_ENC_L Pin 2 |
+| 9 | Encoder R B | Input | J_ENC_R Pin 2 |
+| 10 | Encoder R A | Input | J_ENC_R Pin 1 |
+| 20 | UART RX (<- Pi TX) | Input | Pi GPIO14 (TXD) |
+| 21 | UART TX (-> Pi RX) | Output | Pi GPIO15 (RXD) |
 
-### Pins die NICHT verwendet werden dürfen
+Nicht verwendete GPIOs: GPIO8 (RGB LED), GPIO18/19 (USB)
 
-| GPIO | Grund |
-|------|-------|
-| 0 | Boot-Pin (Pull-up beim Start nötig) |
-| 2 | Bereits als Status-LED verwendet |
-| 5 | Boot-Pin (muss HIGH beim Start sein) |
-| 6-11 | Intern für SPI-Flash belegt |
-| 12 | Boot-Pin (muss LOW beim Start sein) |
-| 15 | Boot-Pin (Debug-Output beim Start) |
-| 1, 3 | Serial TX/RX (micro-ROS Transport) |
+## Stueckliste (BOM)
 
-## Stückliste (BOM)
+### PCB-Komponenten
 
-| Ref | Bauteil | Wert/Typ | Package | Menge | Bemerkung |
-|-----|---------|----------|---------|-------|-----------|
-| U1 | ESP32 DevKit V1 | 30-Pin | 2x 15-Pin Buchsenleiste | 1 | Aufsteckbar |
-| U2 | LM2596 Step-Down | 12V→5V | Fertigmodul | 1 | Alt.: Mini-360 Buck |
-| D1 | Schottky-Diode | SS34 (3A/40V) | DO-214AB / SMA | 1 | Verpolschutz |
-| C1 | Elko | 100uF / 25V | Radial, D6.3mm | 1 | 12V Puffer |
-| C2 | Elko | 100uF / 16V | Radial, D6.3mm | 1 | 5V Puffer |
-| C3 | Keramik-Kondensator | 100nF | 0805 oder THT | 1 | ESP32 Entstörung |
-| R1 | Widerstand | 10kOhm | 0805 oder THT | 1 | Pull-down Enable L |
-| R2 | Widerstand | 10kOhm | 0805 oder THT | 1 | Pull-down Enable R |
-| J1 | Schraubklemme | 6-Pin, RM 2.54mm | KF128 | 1 | BTS7960 Links |
-| J2 | Schraubklemme | 6-Pin, RM 2.54mm | KF128 | 1 | BTS7960 Rechts |
-| J3 | Schraubklemme | 4-Pin, RM 2.54mm | KF128 | 1 | Encoder Links |
-| J4 | Schraubklemme | 4-Pin, RM 2.54mm | KF128 | 1 | Encoder Rechts |
-| J6 | Pin-Header | 4-Pin, RM 2.54mm | Gerade | 1 | I2C Expansion (optional) |
-| J7 | Schraubklemme | 2-Pin, RM 5.08mm | KF301 | 1 | 12V Power Eingang |
+| Ref | Bauteil | Wert/Typ | Package | Menge |
+|-----|---------|----------|---------|-------|
+| U1 | ESP32-C3-DevKitM-1 | 30-Pin | 2x 15-Pin Buchsenleiste | 1 |
+| U2 | MINI560 | 5V/5A Step-Down | 22x17mm, auf PCB loeten | 1 |
+| J_PI | Stacking Header | 2x20, RM 2.54mm, Extra Tall | 40-Pin Pass-Through | 1 |
+| J7 | Schraubklemme | 1x2, RM 5.08mm | KF301 | 1 |
+| J_SIG_L | Pin Header | 1x6, RM 2.54mm | Vertikal | 1 |
+| J_SIG_R | Pin Header | 1x6, RM 2.54mm | Vertikal | 1 |
+| J_PWR_L | Schraubklemme | 1x2, RM 5.08mm | KF301 | 1 |
+| J_PWR_R | Schraubklemme | 1x2, RM 5.08mm | KF301 | 1 |
+| J_ENC_L | Pin Header | 1x4, RM 2.54mm | Vertikal | 1 |
+| J_ENC_R | Pin Header | 1x4, RM 2.54mm | Vertikal | 1 |
+| C1 | Elko | 100uF/25V | Radial D6.3mm | 1 |
+| C2 | Elko | 100uF/16V | Radial D6.3mm | 1 |
+| C3 | Keramik | 100nF | 0805 oder THT | 1 |
+| R1 | Widerstand | 10kOhm | 0805 oder THT | 1 |
+| R2 | Widerstand | 10kOhm | 0805 oder THT | 1 |
+
+### Befestigungsmaterial (nicht auf PCB)
+
+| Teil | Spezifikation | Menge |
+|------|---------------|-------|
+| XT60 Buchse mit Kabel | An J7 Schraubklemme | 1 |
+| M2.5 Schraube | M2.5 x 5mm | 6 |
+| M2.5 Abstandshalter | M2.5 x 11mm, Innengewinde | 4 (MH1-MH4) |
+| M2.5 Abstandshalter | M2.5 x variabel | 2 (MH5-MH6) |
+| M2.5 Mutter | M2.5 | 6 |
+
+## Mounting Holes
+
+| Hole | X (mm) | Y (mm) | Durchmesser | Funktion |
+|------|--------|--------|-------------|----------|
+| MH1 | 3.5 | 3.5 | 2.75mm (M2.5) | Pi HAT Standard |
+| MH2 | 61.5 | 3.5 | 2.75mm (M2.5) | Pi HAT Standard |
+| MH3 | 3.5 | 52.5 | 2.75mm (M2.5) | Pi HAT Standard |
+| MH4 | 61.5 | 52.5 | 2.75mm (M2.5) | Pi HAT Standard |
+| MH5 | 3.5 | 96.5 | 2.75mm (M2.5) | Chassis-Stuetze |
+| MH6 | 61.5 | 96.5 | 2.75mm (M2.5) | Chassis-Stuetze |
 
 ## PCB Layout
 
-### Empfohlene Masse
-
-80mm x 60mm — passt auf Standard-Lochraster und in kompakte Roboter-Gehäuse.
-
-### Platzierung
-
 ```
-┌─────────────────────────────────────────┐
-│ [J7: 12V IN]   [D1]  [C1]   [LM2596]  │  ← Stromversorgung oben
-│                               [C2]      │
-│─────────────────────────────────────────│
-│                                         │
-│ [J1: BTS L]      ┌─────────┐  [J2: BTS R] │  ← Motor-Anschlüsse links/rechts
-│ RPWM LPWM EN     │  ESP32  │  RPWM LPWM   │
-│ VCC  GND         │  DevKit │  EN VCC GND   │
-│                   │  (U1)   │              │
-│ [J3: Enc L]      │         │  [J4: Enc R]  │  ← Encoder-Anschlüsse
-│ A B VCC GND      │         │  A B VCC GND  │
-│                   └────┬────┘              │
-│                        │USB               │
-│ [R1] [R2] [C3]     [J5: zum Pi]          │  ← USB unten mittig
-│                   [J6: I2C opt.]          │
-└─────────────────────────────────────────┘
+y=0    +--------------------------------------------------------------+
+       |  o MH1 (3.5, 3.5)                        o MH2 (61.5, 3.5)  |
+       |                                                               |
+       |  +--- J_PI: 40-Pin Stacking Header (Pass-Through) ---+      |
+       |  | Pin2(5V) Pin4(5V) ... Pin8(TXD) Pin10(RXD) ...    |      |
+       |  | Pin1(3V3) ... Pin6(GND) Pin9(GND) ...              |      |
+       |  +----------------------------------------------------+      |
+       |                                                               |
+       |  [J7]    [C1]    [U2: MINI560]    [C2]   [C3]                |
+       |  2-Pin   100uF    22x17mm         100uF  100nF               |
+       |  5.08mm  25V      12V->5V         16V                        |
+       |                                                               |
+       |  +J_SIG_L+ +J_PWR_L+        +J_SIG_R+ +J_PWR_R+             |
+       |  | RPWM  | | B+    | +----+ | RPWM  | | B+    |             |
+       |  | LPWM  | | B-    | |ESP | | LPWM  | | B-    |             |
+       |  | R_EN  | +-------+ |32  | | R_EN  | +-------+             |
+       |  | L_EN  |  [R1]     |C3  |   [R2]  |                        |
+       |  | VCC   |  10k      |    |  10k    |                        |
+       |  | GND   |           |U1  |         |                        |
+       |  +-------+           +----+  +-------+                       |
+       |                                                               |
+       |  o MH3 (3.5, 52.5)                      o MH4 (61.5, 52.5)  |
+       |  - - - - - - - Pi Bereich Ende - - - - - - - - - - - - - -   |
+       |                                                               |
+       |  [J_ENC_L]                                    [J_ENC_R]      |
+       |  A  B  VCC  GND                              A  B  VCC GND  |
+       |                                                               |
+       |                                                               |
+       |              MowerBot Motor Controller v2.0                   |
+       |                                                               |
+       |  o MH5 (3.5, 96.5)                      o MH6 (61.5, 96.5)  |
+y=100  +--------------------------------------------------------------+
 ```
+
+### Trace-Breiten
+
+| Netz | Strom | Trace-Breite (1oz Kupfer) |
+|------|-------|---------------------------|
+| 12V Rail | bis 10A peak | >= 3mm |
+| GND (Leistung) | bis 10A peak | >= 3mm (oder GND-Plane) |
+| 5V Rail | bis 4A | >= 2mm |
+| 3V3 Rail | < 0.5A | 0.5mm |
+| Signal (GPIO, UART) | < 0.01A | 0.3mm |
 
 ### Layout-Regeln
 
-1. **GND-Plane auf der Unterseite** — reduziert EMI von den PWM-Signalen
-2. **12V und 5V Leiterbahnen mindestens 1mm breit**, besser 2mm
-3. **Signalleitungen (PWM, Encoder) so kurz wie möglich**
-4. **C3 (100nF) direkt neben ESP32 VIN-Pin** platzieren
-5. **Pull-down Widerstände R1/R2 nah an GPIO 18/22** platzieren
-6. **Schraubklemmen an den PCB-Kanten** für einfaches Verkabeln
-7. **ESP32 mit Buchsenleisten aufsteckbar** zum einfachen Austauschen
-8. **Mindestens 2mm Abstand** zwischen 12V-Leitungen und 3.3V-Signalleitungen
+1. GND-Plane auf B.Cu (Unterseite) — reduziert EMI
+2. 12V und 5V Leiterbahnen >= 2mm breit
+3. UART-Signale (TX/RX) kurz und direkt zwischen Pi Header und ESP32
+4. C3 (100nF) direkt neben ESP32 5V Pin
+5. Pull-down Widerstaende R1/R2 nah an den Enable-Pins
+6. BTS7960 Connectors an den Board-Kanten
+7. ESP32 mit Buchsenleisten aufsteckbar
+8. 40-Pin Stacking Header an exakter Pi HAT-Position
+9. MINI560 direkt auf PCB geloetet
+10. Mindestens 2mm Abstand zwischen 12V und 3.3V Signalen
 
-## Verkabelung extern (Kabel vom PCB zu den Modulen)
+## Kabelquerschnitte
+
+| Verbindung | Max. Strom | Kabelquerschnitt |
+|-----------|------------|-------------------|
+| Akku -> J7 (XT60) | ~10A | 1.5-2.5mm2 (AWG 16-14) |
+| J_PWR_L/R -> BTS7960 B+/B- | ~5A | 1.0-1.5mm2 (AWG 18-16) |
+| Motor -> BTS7960 M+/M- | ~5A | 1.0-1.5mm2 (AWG 18-16) |
+| J_SIG_L/R -> BTS7960 Signal | < 0.1A | 0.25mm2 (AWG 24) |
+| J_ENC_L/R -> Encoder | < 0.01A | 0.25mm2 (AWG 24) |
+
+## Externe Verkabelung
 
 ### BTS7960 Modul (pro Modul)
 
+Signal-Kabel (duennes Kabel, AWG 24):
 ```
-PCB J1/J2          BTS7960 Modul
-─────────          ─────────────
-Pin 1 (RPWM) ──→  RPWM
-Pin 2 (LPWM) ──→  LPWM
-Pin 3 (R_EN) ──→  R_EN
-Pin 4 (L_EN) ──→  L_EN
-Pin 5 (VCC)  ──→  VCC
-Pin 6 (GND)  ──→  GND
-
-Separat (nicht über PCB):
-12V Akku (+) ──→  B+    ← Leistungsstrom direkt zum BTS7960
-12V Akku (-) ──→  B-
-Motor        ──→  M+ / M-
+J_SIG_x Pin 1 (RPWM) --> BTS7960 RPWM
+J_SIG_x Pin 2 (LPWM) --> BTS7960 LPWM
+J_SIG_x Pin 3 (R_EN) --> BTS7960 R_EN
+J_SIG_x Pin 4 (L_EN) --> BTS7960 L_EN
+J_SIG_x Pin 5 (VCC)  --> BTS7960 VCC
+J_SIG_x Pin 6 (GND)  --> BTS7960 GND
 ```
 
-**Wichtig:** Die 12V Motorstrom-Leitungen (B+/B-) gehen direkt vom Akku/Netzteil zum BTS7960 Modul — NICHT über das PCB. Das PCB führt nur die Steuersignale.
-
-### JGB37-520 Encoder-Motor (pro Motor)
-
+Leistungs-Kabel (dickes Kabel, AWG 16-18):
 ```
-Motor-Kabel (2 Drähte) ──→ BTS7960 M+ / M-
-
-Encoder-Kabel (4 Drähte):
-PCB J3/J4            Encoder
-─────────            ───────
-Pin 1 (A)   ←──      Kanal A (meist gelb)
-Pin 2 (B)   ←──      Kanal B (meist grün)
-Pin 3 (VCC) ──→      VCC (meist rot)
-Pin 4 (GND) ──→      GND (meist schwarz)
+J_PWR_x Pin 1 (B+)   --> BTS7960 B+
+J_PWR_x Pin 2 (B-)   --> BTS7960 B-
 ```
 
-### Raspberry Pi
-
+Motor-Kabel (dickes Kabel, AWG 16-18, direkt BTS7960 -> Motor):
 ```
-ESP32 USB (Micro-USB) ──→ USB-Kabel ──→ Raspberry Pi USB-Port
+BTS7960 M+ --> JGB37-520 Motor+
+BTS7960 M- --> JGB37-520 Motor-
 ```
 
-## Pull-down Widerstände erklärt
+### JGB37-520 Encoder (pro Motor)
 
-Ein Pull-down Widerstand zieht einen Pin auf GND (LOW / 0V) wenn nichts anderes ihn aktiv ansteuert.
+Encoder-Kabel (duennes Kabel, AWG 24):
+```
+J_ENC_x Pin 1 <-- Encoder Kanal A
+J_ENC_x Pin 2 <-- Encoder Kanal B
+J_ENC_x Pin 3 --> Encoder VCC (rot)
+J_ENC_x Pin 4 --> Encoder GND (schwarz)
+```
+
+### Raspberry Pi 4
+
+Das Motor Controller Board wird direkt auf die Pi GPIO-Leiste gesteckt
+(40-Pin Stacking Header). Keine externen Kabel noetig.
+
+Alle nicht genutzten Pi-Pins sind ueber den Stacking Header von oben
+zugaenglich fuer weitere Sensoren, HATs oder Peripherie.
+
+## Software-Aenderungen
+
+### Firmware (firmware/src/main.cpp)
+
+- Board: ESP32-C3-DevKitM-1 (RISC-V Single-Core, 160 MHz)
+- UART fuer micro-ROS: Serial1 auf GPIO20 (RX) / GPIO21 (TX)
+- Pin-Defines: GPIO0-5 fuer BTS7960, GPIO6/7/9/10 fuer Encoder
+- PWM: ESP32-C3 hat 6 LEDC-Kanaele (4 genutzt fuer Motor-PWM)
+- Status-LED: Separate LED noetig (GPIO8 ist WS2812 RGB)
+
+### PlatformIO (firmware/platformio.ini)
+
+```ini
+[env:esp32-c3-devkitm-1]
+platform = espressif32
+board = esp32-c3-devkitm-1
+framework = arduino
+monitor_speed = 115200
+lib_deps =
+    https://github.com/micro-ROS/micro_ros_platformio
+board_microros_distro = humble
+board_microros_transport = serial
+```
+
+### Docker (docker-compose.yml)
+
+```yaml
+micro-ros:
+  image: microros/micro-ros-agent:humble
+  command: serial --dev /dev/ttyAMA0 -b 115200
+  devices:
+    - /dev/ttyAMA0:/dev/ttyAMA0
+```
+
+### Raspberry Pi Konfiguration
+
+Die Serial-Konsole muss deaktiviert werden damit der UART fuer
+micro-ROS frei ist:
+
+```bash
+sudo raspi-config
+# -> Interface Options -> Serial Port
+# -> Login Shell: No
+# -> Hardware: Yes
+sudo reboot
+```
+
+## Pull-down Widerstaende erklaert
+
+Ein Pull-down Widerstand zieht einen Pin auf GND (LOW / 0V) wenn
+nichts anderes ihn aktiv ansteuert.
 
 ### Problem ohne Pull-down
 
-Wenn der ESP32 neu startet, resettet oder die Firmware crasht, sind die GPIO-Pins kurzzeitig in einem undefinierten Zustand — sie "floaten" zwischen HIGH und LOW. Der BTS7960 Enable-Pin könnte dann kurz HIGH sehen und die Motoren unkontrolliert anspringen lassen.
+Wenn der ESP32 neu startet, resettet oder die Firmware crasht, sind
+die GPIO-Pins kurzzeitig in einem undefinierten Zustand. Der BTS7960
+Enable-Pin koennte dann kurz HIGH sehen und die Motoren unkontrolliert
+anspringen lassen.
 
-### Lösung mit Pull-down
+### Loesung mit Pull-down
 
 ```
-ESP32 GPIO 18 ──────┬──────→ BTS7960 R_EN + L_EN
-                    │
-                   [10kΩ]   ← Pull-down Widerstand
-                    │
-                   GND
+ESP32-C3 GPIO2 --+---> BTS7960 R_EN + L_EN
+                  |
+                 [10kOhm]
+                  |
+                 GND
 
-ESP32 resettet → GPIO 18 floatet → 10kΩ zieht auf GND → Enable = LOW → Motor AUS
-ESP32 läuft    → GPIO 18 = HIGH  → übersteuert 10kΩ   → Enable = HIGH → Motor bereit
+ESP32 resettet -> GPIO2 floatet -> 10kOhm zieht auf GND -> Enable = LOW -> Motor AUS
+ESP32 laeuft   -> GPIO2 = HIGH  -> uebersteuert 10kOhm -> Enable = HIGH -> Motor bereit
 ```
 
 ### Warum 10kOhm?
 
-- Zu klein (z.B. 100 Ohm): Zieht zu viel Strom wenn der ESP32 HIGH ausgibt (3.3V / 100 Ohm = 33mA)
-- Zu gross (z.B. 1M Ohm): Zieht nicht stark genug, Störungen könnten den Pin trotzdem auf HIGH bringen
-- 10kOhm ist der Standard: 3.3V / 10kOhm = 0.33mA — vernachlässigbar wenig Strom, aber stark genug um den Pin zuverlässig auf LOW zu halten
+- Zu klein (100 Ohm): Zieht zu viel Strom (3.3V / 100Ohm = 33mA)
+- Zu gross (1MOhm): Zieht nicht stark genug gegen Stoerungen
+- 10kOhm: 3.3V / 10kOhm = 0.33mA — vernachlaessigbar, aber zuverlaessig

@@ -30,3 +30,9 @@ docker-compose.override.yml
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# KiCad
+hardware/.history/
+hardware/*-backups/
+hardware/*.lck
+hardware/fp-info-cache

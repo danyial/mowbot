@@ -1,6 +1,8 @@
 x-ros-common: &ros-common
   restart: unless-stopped
   network_mode: host
+  ipc: host
+  pid: host
   environment:
     - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
   volumes:

@@ -61,7 +61,9 @@
   3. A connection/stale-scan indicator on the map page turns red within 1.5 s of the `lidar` container being stopped and returns to green within 1.5 s of it restarting.
   4. A Foxglove layout file committed at `web/foxglove/mowerbot.foxglove-layout.json` opens in Foxglove Studio against the existing rosbridge endpoint and shows `/scan`, `/odom`, and `/fix` panels populated with live data.
   5. Scan points on the overlay are colored on a distance gradient (near = warm, far = cool); the legend or a range-ring annotation makes this readable without a manual.
-**Plans**: TBD
+**Plans:** 2 plans
+- [ ] 03-01-PLAN.md — Commit A: global CBOR retrofit on ROSLIB.Topic + conditional server.mjs binary-frame guard + 5-topic regression gate
+- [ ] 03-02-PLAN.md — Commit B: /scan pipeline (LaserScan type, useScanStore, TOPICS.SCAN, ScanOverlay canvas with viridis + stale badge + legend, Foxglove layout, integration docs)
 **UI hint**: yes
 
 ## Progress
@@ -71,7 +73,7 @@
 | 0. GSD Brownfield Adoption | 1/1 | Complete   | 2026-04-14 |
 | 1. Hardware & UART Routing | 0/1 | Not started | - |
 | 2. LiDAR Driver & `/scan` Publication | 0/0 | Not started | - |
-| 3. Web Visualization — `/scan` on the Map Page | 0/0 | Not started | - |
+| 3. Web Visualization — `/scan` on the Map Page | 0/2 | Not started | - |
 
 ## Coverage
 

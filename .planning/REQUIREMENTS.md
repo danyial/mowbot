@@ -17,11 +17,11 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### LiDAR Driver & ROS2 Integration
 
-- [ ] **DRV-01**: `ldlidar_stl_ros2` driver packaged as a new `lidar` Docker service (base image, `network_mode: host` + `ipc: host` + `pid: host`, device mount `/dev/ttyLIDAR`), mirroring the existing `docker/gnss/` layout
-- [ ] **DRV-02**: `/scan` topic publishes `sensor_msgs/LaserScan` at a steady 10 Hz with sensor QoS (BEST_EFFORT, KEEP_LAST 5); `ros2 topic hz /scan` reports 10.0 ± 0.1 Hz
-- [ ] **DRV-03**: `base_link → laser_frame` static transform is published via `static_transform_publisher` in the nav launch file, with measured mount offsets (x/y/z and yaw) reflecting the LiDAR's position on the chassis; `frame_id: laser_frame` set on `/scan`
-- [ ] **DRV-04**: Angular sector mask / self-hit filter configured (via `laser_filters` or driver params) so chassis, wheels, and HAT regions inside the 360° FoV are excluded from published `/scan`
-- [ ] **DRV-05**: `lidar` service added to `docker-compose.yml` and starts cleanly alongside existing services; driver image tag is pinned (not `latest`)
+- [x] **DRV-01**: `ldlidar_stl_ros2` driver packaged as a new `lidar` Docker service (base image, `network_mode: host` + `ipc: host` + `pid: host`, device mount `/dev/ttyLIDAR`), mirroring the existing `docker/gnss/` layout
+- [x] **DRV-02**: `/scan` topic publishes `sensor_msgs/LaserScan` at a steady 10 Hz with sensor QoS (BEST_EFFORT, KEEP_LAST 5); `ros2 topic hz /scan` reports 10.0 ± 0.1 Hz
+- [x] **DRV-03**: `base_link → laser_frame` static transform is published via `static_transform_publisher` in the nav launch file, with measured mount offsets (x/y/z and yaw) reflecting the LiDAR's position on the chassis; `frame_id: laser_frame` set on `/scan`
+- [x] **DRV-04**: Angular sector mask / self-hit filter configured (via `laser_filters` or driver params) so chassis, wheels, and HAT regions inside the 360° FoV are excluded from published `/scan`
+- [x] **DRV-05**: `lidar` service added to `docker-compose.yml` and starts cleanly alongside existing services; driver image tag is pinned (not `latest`)
 
 ### Web Visualization
 
@@ -85,11 +85,11 @@ Populated during roadmap creation.
 | HW-03 | Phase 1 | Pending |
 | HW-04 | Phase 1 | Pending |
 | HW-05 | Phase 1 | Pending |
-| DRV-01 | Phase 2 | Pending |
-| DRV-02 | Phase 2 | Pending |
-| DRV-03 | Phase 2 | Pending |
-| DRV-04 | Phase 2 | Pending |
-| DRV-05 | Phase 2 | Pending |
+| DRV-01 | Phase 2 | Complete |
+| DRV-02 | Phase 2 | Complete |
+| DRV-03 | Phase 2 | Complete |
+| DRV-04 | Phase 2 | Complete |
+| DRV-05 | Phase 2 | Complete |
 | VIZ-01 | Phase 3 | Pending |
 | VIZ-02 | Phase 3 | Pending |
 | VIZ-03 | Phase 3 | Pending |

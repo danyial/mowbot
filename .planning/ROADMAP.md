@@ -49,7 +49,7 @@
   4. A scan captured with a known asymmetric test obstacle (e.g., wall on the robot's left only) shows returns on the correct hemisphere when viewed via `ros2 topic echo /scan --once` (angle convention and `laser_scan_dir` validated).
   5. Chassis / wheel / HAT self-hits inside the 360° FoV are absent from `/scan` — the configured angular sector mask or self-hit filter is visible in the driver's launch params and produces no hits in masked sectors under a stationary indoor test.
 **Plans:** 1 plan
-- [ ] 02-01-PLAN.md — Two-commit sequence: (A) retrofit ipc:host+pid:host on x-ros-common anchor with 12-row regression gate across existing services; (B) add pinned ldlidar_stl_ros2 Docker service (SHA bf668a8 + SensorDataQoS sed-patch), launch.py with base_link→laser_frame zero-placeholder TF, docker-compose lidar entry, and docs/lidar-mount.md measurement procedure
+- [x] 02-01-PLAN.md — Two-commit sequence: (A) retrofit ipc:host+pid:host on x-ros-common anchor with 12-row regression gate across existing services; (B) add pinned ldlidar_stl_ros2 Docker service (SHA bf668a8 + SensorDataQoS sed-patch), launch.py with base_link→laser_frame zero-placeholder TF, docker-compose lidar entry, and docs/lidar-mount.md measurement procedure
 
 ### Phase 3: Web Visualization — `/scan` on the Map Page
 **Goal**: An operator opens the dashboard, navigates to the map page, and sees the LD19's live scan as a 2D polar overlay on the robot — the Core Value gate for this milestone.

@@ -122,6 +122,23 @@ services:
     depends_on:
       - rosbridge
 
+  # ============================================
+  # LiDAR — LDROBOT LD19 2D-Scan
+  # Pi GPIO4/5 (uart3) -> /dev/ttyLIDAR -> ldlidar_stl_ros2 -> /scan
+  # ============================================
+  lidar:
+    <<: *ros-common
+    build:
+      context: ./docker/lidar
+      args:
+        LDLIDAR_SHA: bf668a89baf722a787dadc442860dcbf33a82f5a
+    image: ghcr.io/danyial/mowbot/lidar:bf668a8
+    container_name: mower-lidar
+    devices:
+      - ${LIDAR_DEVICE:-/dev/ttyLIDAR}:/dev/ttyLIDAR
+    command: >
+      ros2 launch /launch/lidar.launch.py
+
 volumes:
   mower-data:
     driver: local

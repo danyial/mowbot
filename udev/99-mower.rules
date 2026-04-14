@@ -3,3 +3,10 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="t
 
 # UM980 GNSS (CH341)
 SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttyGNSS", GROUP="dialout", MODE="0660"
+
+# LD19 LiDAR on Pi 4 UART3 (dtoverlay=uart3, GPIO4/5, BCM2711 fe201600.serial)
+SUBSYSTEM=="tty", KERNELS=="fe201600.serial", SYMLINK+="ttyLIDAR", GROUP="dialout", MODE="0660"
+
+# --- Fallback (commented out — activate only if the GPIO4/5 pigtail path fails; see RESEARCH §9)
+# CH340 USB-UART dongle fallback for LD19
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttyLIDAR", GROUP="dialout", MODE="0660"

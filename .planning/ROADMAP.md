@@ -35,7 +35,8 @@
   3. `picocom -b 230400 /dev/ttyLIDAR` with LD19 powered shows valid `0x54 0x2C` packet headers in the byte stream.
   4. Regression check: after all boot-config changes, `ros2 topic echo /odom` (from inside the `nav` container) shows live encoder data from the ESP32 over `ttyAMA0` — the HAT link is unchanged.
   5. Measured 5V rail voltage at the LD19 feed point stays ≥ 4.85 V under simultaneous motor-startup transient + LD19 steady draw; the measurement and decision (shared MINI560 rail vs. dedicated rail) are committed to `docs/`.
-**Plans**: TBD
+**Plans:** 1 plan
+- [ ] 01-01-PLAN.md — Add dtoverlay=uart3, wire LD19 pigtail (pins 29/30/9/2), bind /dev/ttyLIDAR via udev KERNELS==fe201600.serial, measure 5V rail under motor transient, regression-check ESP32 /odom
 
 ### Phase 2: LiDAR Driver & `/scan` Publication
 **Goal**: A new `lidar` Docker service publishes a clean, correctly-framed `sensor_msgs/LaserScan` on `/scan` at steady 10 Hz, discoverable by every other ROS2 container on the host.
@@ -67,7 +68,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. GSD Brownfield Adoption | 1/1 | Complete   | 2026-04-14 |
-| 1. Hardware & UART Routing | 0/0 | Not started | - |
+| 1. Hardware & UART Routing | 0/1 | Not started | - |
 | 2. LiDAR Driver & `/scan` Publication | 0/0 | Not started | - |
 | 3. Web Visualization — `/scan` on the Map Page | 0/0 | Not started | - |
 

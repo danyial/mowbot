@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Map,
+  Radar,
   Gamepad2,
   ClipboardList,
   Settings,
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/map", label: "Karte", icon: Map },
+  { href: "/lidar", label: "LiDAR", icon: Radar },
   { href: "/teleop", label: "Steuerung", icon: Gamepad2 },
   { href: "/missions", label: "Aufträge", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },

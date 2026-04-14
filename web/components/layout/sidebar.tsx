@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   Map,
+  Radar,
   Gamepad2,
   ClipboardList,
   Settings,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/map", label: "Karte", icon: Map },
+  { href: "/lidar", label: "LiDAR", icon: Radar },
   { href: "/teleop", label: "Steuerung", icon: Gamepad2 },
   { href: "/missions", label: "Aufträge", icon: ClipboardList },
   { href: "/settings", label: "Einstellungen", icon: Settings },

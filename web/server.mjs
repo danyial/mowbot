@@ -83,11 +83,17 @@ app.prepare().then(() => {
           console.log("[rosbridge-proxy] Connected to rosbridge");
         });
 
-        // rosbridge -> client (sanitize NaN)
-        rosbridgeWs.on("message", (data) => {
-          if (clientWs.readyState === WebSocket.OPEN) {
-            const cleaned = sanitizeNaN(data);
-            clientWs.send(cleaned);
+        // rosbridge -> client
+        //   - text frames: sanitize NaN (existing behavior for uninitialized GPS fields)
+        //   - binary frames (CBOR): pass through untouched to preserve byte stream
+        //     Per ws 8.x: `isBinary` is the second arg to the "message" event.
+        //     Required for Phase 3 CBOR retrofit (D-06); see 03-RESEARCH.md §P2.
+        rosbridgeWs.on("message", (data, isBinary) => {
+          if (clientWs.readyState !== WebSocket.OPEN) return;
+          if (isBinary) {
+            clientWs.send(data, { binary: true });
+          } else {
+            clientWs.send(sanitizeNaN(data));
           }
         });
 

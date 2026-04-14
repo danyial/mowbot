@@ -27,7 +27,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 - [ ] **VIZ-01**: 2D polar scan overlay rendered on `web/app/map/page.tsx` using a Canvas 2D component (`<ScanOverlay>`) reading from a Zustand `useScanStore`; scan points visible relative to the robot's base frame — **Core Value gate**
 - [ ] **VIZ-02**: Browser subscribes to `/scan` via rosbridge with explicit `throttle_rate: 100` (ms), `compression: "cbor"`, and `queue_length: 1` to keep WebSocket load bounded
-- [ ] **VIZ-03**: Connection/stale-scan status indicator on the map page turns red if no `/scan` message has arrived for >1 s; green otherwise
+- [ ] **VIZ-03**: Connection/stale-scan status indicator on the map page turns red if no `/scan` message has arrived for >1.5 s; green otherwise
 - [ ] **VIZ-04**: Foxglove layout file committed (e.g. `web/foxglove/mowerbot.foxglove-layout.json`) so users can point Foxglove Studio at the existing rosbridge endpoint and see `/scan` + `/odom` + `/fix` out of the box
 - [ ] **VIZ-05**: Scan points are colored by distance (near = warm / far = cool) in the polar overlay as a readability enhancement
 
@@ -103,4 +103,4 @@ Populated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-14 after initial definition*
+*Last updated: 2026-04-14 — VIZ-03 threshold aligned to 1.5 s (matches CONTEXT D-09 + ROADMAP SC#3)*

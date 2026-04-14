@@ -7,7 +7,7 @@
 
 ## Phases
 
-- [ ] **Phase 0: GSD Brownfield Adoption** — Formalize existing MowerBot codebase as the GSD baseline (single-plan formality)
+- [x] **Phase 0: GSD Brownfield Adoption** — Formalize existing MowerBot codebase as the GSD baseline (single-plan formality) (completed 2026-04-14)
 - [ ] **Phase 1: Hardware & UART Routing** — Land LD19 on a dedicated Pi 4 PL011 UART without breaking the existing ESP32 HAT link
 - [ ] **Phase 2: LiDAR Driver & `/scan` Publication** — Containerize `ldlidar_stl_ros2`, publish `sensor_msgs/LaserScan` at 10 Hz with correct TF + QoS
 - [ ] **Phase 3: Web Visualization — `/scan` on the Map Page** — Render 2D polar scan overlay on `map/page.tsx` via throttled CBOR rosbridge (Core Value gate)
@@ -22,8 +22,8 @@
   1. `.planning/PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`, and `config.json` all exist, are committed, and reflect the LD19 milestone.
   2. `.planning/codebase/` artifacts (ARCHITECTURE, STACK, STRUCTURE, CONCERNS, CONVENTIONS, INTEGRATIONS, TESTING) are preserved and referenced by the roadmap.
   3. A human reading `.planning/PROJECT.md` can identify the core value (LD19 → `/scan` → web map), v1 scope, and explicit out-of-scope items (Nav2/SLAM/safety watchdog) without reading any other file.
-**Plans:** 1 plan
-- [ ] 00-01-PLAN.md — Verify Phase 0 criteria, write ADOPTION.md receipt, update STATE.md, commit, and place annotated tag `gsd-baseline-v0`
+**Plans:** 1/1 plans complete
+- [x] 00-01-PLAN.md — Verify Phase 0 criteria, write ADOPTION.md receipt, update STATE.md, commit, and place annotated tag `gsd-baseline-v0`
 
 ### Phase 1: Hardware & UART Routing
 **Goal**: LD19 is electrically reachable from the Pi 4 on a stable device path with a dedicated PL011 UART, and every existing HAT/ESP32 function still works.
@@ -66,7 +66,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. GSD Brownfield Adoption | 0/1 | Not started | - |
+| 0. GSD Brownfield Adoption | 1/1 | Complete   | 2026-04-14 |
 | 1. Hardware & UART Routing | 0/0 | Not started | - |
 | 2. LiDAR Driver & `/scan` Publication | 0/0 | Not started | - |
 | 3. Web Visualization — `/scan` on the Map Page | 0/0 | Not started | - |

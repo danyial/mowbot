@@ -1,0 +1,55 @@
+{
+  "configById": {
+    "3D!scan": {
+      "topics": {
+        "/scan": {
+          "visible": true,
+          "pointSize": 3,
+          "colorField": "intensity"
+        }
+      },
+      "followTf": "base_link",
+      "cameraState": {
+        "distance": 15,
+        "perspective": true,
+        "phi": 60,
+        "thetaOffset": 0
+      }
+    },
+    "RawMessages!fix": {
+      "topicPath": "/fix"
+    },
+    "Plot!odom": {
+      "paths": [
+        {
+          "value": "/odometry/filtered.twist.twist.linear.x",
+          "enabled": true,
+          "label": "linear.x (m/s)"
+        },
+        {
+          "value": "/odometry/filtered.twist.twist.angular.z",
+          "enabled": true,
+          "label": "angular.z (rad/s)"
+        }
+      ],
+      "minYValue": null,
+      "maxYValue": null,
+      "showXAxisLabels": true,
+      "showYAxisLabels": true
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "first": "3D!scan",
+    "second": {
+      "first": "RawMessages!fix",
+      "second": "Plot!odom",
+      "direction": "column",
+      "splitPercentage": 40
+    },
+    "direction": "row",
+    "splitPercentage": 60
+  }
+}

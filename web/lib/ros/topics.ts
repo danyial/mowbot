@@ -38,6 +38,19 @@ export const TOPICS = {
     compression: "cbor",
     throttleMs: 0,
   },
+  // LD19 2D LiDAR — D-08: full rosbridge decimation + client-side render cap.
+  // `throttle_rate` + `queue_length` hold the wire rate down to ~10 Hz max even
+  // if the driver publishes faster, and `throttleMs` is a parallel render-rate
+  // cap so a burst of messages can't drive the canvas redraw loop harder than
+  // ~10 fps. Both layers are intentional (see RESEARCH pitfall #5).
+  SCAN: {
+    name: "/scan",
+    messageType: "sensor_msgs/LaserScan",
+    compression: "cbor",
+    throttle_rate: 100, // ms — rosbridge-side decimation (D-08, P3)
+    queue_length: 1,    // rosbridge publisher-side queue (D-08)
+    throttleMs: 100,    // client-side render-rate cap (D-08, P3)
+  },
 
   // Published topics — no compression needed (browser publishes, doesn't subscribe)
   CMD_VEL: {

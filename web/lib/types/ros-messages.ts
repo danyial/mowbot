@@ -137,3 +137,22 @@ export function getFixStatus(
   if (covarianceType === 3 && status >= 0) return "rtk_fixed";
   return FIX_STATUS_MAP[status] ?? "no_fix";
 }
+
+// sensor_msgs/LaserScan — added Phase 3 Commit B (VIZ-01)
+// https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html
+export interface LaserScan {
+  header: Header;
+  angle_min: number;        // rad — typically -π
+  angle_max: number;        // rad — typically +π
+  angle_increment: number;  // rad between beams
+  time_increment: number;
+  scan_time: number;
+  range_min: number;        // m
+  range_max: number;        // m
+  // Under CBOR, roslibjs decodes Float32 arrays to a Float32Array; under JSON,
+  // ranges is a plain number[]. Consumers must iterate via index, which works
+  // for both. NaN sentinels in `ranges` are preserved by the subscriber-boundary
+  // scrubber's typed-array exemption (see web/lib/ros/subscribers.ts).
+  ranges: Float32Array | number[];
+  intensities: Float32Array | number[]; // may be empty
+}

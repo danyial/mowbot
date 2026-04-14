@@ -7,6 +7,7 @@ import { useGpsStore } from "@/lib/store/gps-store";
 import { useZoneStore } from "@/lib/store/zone-store";
 import { useMapDefaults } from "@/lib/hooks/use-map-center";
 import { RobotMarker } from "./robot-marker";
+import { ScanOverlay } from "./scan-overlay";
 import { ZoneLayer } from "./zone-layer";
 import { ZoneDrawHandler } from "./zone-draw-handler";
 import { TrackLayer } from "./track-layer";
@@ -108,6 +109,7 @@ export default function RobotMap({
           maxNativeZoom={tileConfig.maxNativeZoom}
         />
         <RobotMarker />
+        <ScanOverlay />
         {showZones && <ZoneLayer />}
         {showTrack && <TrackLayer />}
         {showPaths && <MowPathLayer />}

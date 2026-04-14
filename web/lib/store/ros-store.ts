@@ -8,6 +8,7 @@ import { useImuStore } from "@/lib/store/imu-store";
 import { useBatteryStore } from "@/lib/store/battery-store";
 import { useOdometryStore } from "@/lib/store/odometry-store";
 import { useMissionStore } from "@/lib/store/mission-store";
+import { useScanStore } from "@/lib/store/scan-store";
 import type {
   NavSatFix,
   ImuMessage,
@@ -15,6 +16,7 @@ import type {
   Odometry,
   StringMsg,
   MowerStatus,
+  LaserScan,
 } from "@/lib/types/ros-messages";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
@@ -69,6 +71,9 @@ function setupSubscriptions() {
     }),
     subscribe<Odometry>("ODOMETRY", (msg) => {
       useOdometryStore.getState().updateOdometry(msg);
+    }),
+    subscribe<LaserScan>("SCAN", (msg) => {
+      useScanStore.getState().updateScan(msg);
     }),
     subscribe<StringMsg>("MOWER_STATUS", (msg) => {
       try {

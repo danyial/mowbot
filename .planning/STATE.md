@@ -1,24 +1,38 @@
+---
+gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: milestone
+status: executing
+last_updated: "2026-04-14T13:46:56.421Z"
+progress:
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 1
+  completed_plans: 0
+  percent: 0
+---
+
 # State: MowerBot — LD19 LiDAR Integration
 
-**Last updated:** 2026-04-14 (roadmap creation)
+**Last updated:** 2026-04-14 (Phase 0 complete — baseline tagged)
 
 ## Project Reference
 
 - **Milestone:** LD19 LiDAR Integration (brownfield)
 - **Core value:** LiDAR data flows end-to-end — LD19 hardware → `/scan` topic → 2D polar overlay visible on the web dashboard's map page.
-- **Current focus:** Roadmap created; awaiting Phase 0 plan generation.
+- **Current focus:** Phase 0 complete; baseline adopted as `gsd-baseline-v0`; Phase 1 (Hardware & UART Routing) is next.
 
 ## Current Position
 
-- **Phase:** 0 — GSD Brownfield Adoption (not started)
+- **Phase:** 1 — Hardware & UART Routing (not started)
 - **Plan:** —
-- **Status:** Roadmap approved, no plans generated yet
-- **Progress:** `[░░░░░░░░░░] 0/4 phases complete`
+- **Status:** Phase 0 complete; baseline committed and tagged `gsd-baseline-v0`; awaiting Phase 1 plan generation
+- **Progress:** `[██░░░░░░░░] 1/4 phases complete`
 
 ```
 Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 (Core Value)
  META        HW/UART     Driver      Web viz
- [ now ]
+ [done]      [ now ]
 ```
 
 ## Performance Metrics
@@ -53,7 +67,7 @@ Not yet applicable — first phase not executed.
 
 ### Active todos
 
-- [ ] Generate Phase 0 plans via `/gsd-plan-phase 0`
+- [x] Generate Phase 0 plans via `/gsd-plan-phase 0`
 - [ ] After Phase 0: generate Phase 1 plans (UART routing is the gating hardware decision)
 
 ### Blockers
@@ -73,6 +87,8 @@ On resume: read `.planning/ROADMAP.md` (phase structure + success criteria), `.p
 - 2026-04-14 — REQUIREMENTS.md defined (16 v1 requirements across HW, DRV, VIZ, META).
 - 2026-04-14 — Research completed (SUMMARY, STACK, ARCHITECTURE, PITFALLS) with HIGH overall confidence.
 - 2026-04-14 — ROADMAP.md created: 4 phases (0–3), 100% requirement coverage, hard linear dependency chain.
+- 2026-04-14 — Phase 0 complete: `.planning/phases/00-gsd-brownfield-adoption/ADOPTION.md` written; annotated tag `gsd-baseline-v0` placed on adoption commit; brownfield baseline formally adopted under GSD.
 
 ---
 *State initialized: 2026-04-14 after roadmap creation*
+*Last transition: 2026-04-14 — Phase 0 → Phase 1*

@@ -9,7 +9,7 @@
 **Key Characteristics:**
 - **ROS2 Humble** as the central nervous system: all Pi services (GNSS, IMU, navigation, motor control) publish/subscribe to topics via DDS middleware (CycloneDDS)
 - **Docker containerized** for reproducibility — each major service (micro-ros-agent, gnss, imu, nav, ntrip, rosbridge, web) runs in isolation with `network_mode: host` for DDS discovery
-- **UART serial protocol** for ESP32 motor controller: micro-ROS agent translates ROS2 `/cmd_vel` messages into motor control commands; ESP32 publishes encoder feedback and status back to `/odom`
+- **UART serial protocol** for ESP32 motor controller: micro-ROS agent translates ROS2 `/cmd_vel` messages into motor control commands. The ESP32 firmware has quadrature-encoder ISRs in place (`encoder_left_count`, `encoder_right_count`) but does NOT currently publish `/odom` — no `rcl_publisher_init` in `firmware/src/main.cpp` as of 2026-04-14. Adding an `/odom` publisher is tracked in `.planning/todos/pending/5v-rail-transient-measurement.md` (re-open trigger: motors electrically connected).
 - **WebSocket rosbridge** for web UI access: browser connects to `/rosbridge` (proxied through `server.mjs`), which connects to rosbridge server on `:9090`; NaN sanitization layer prevents JSON parse errors
 - **Sensor fusion via EKF**: Kalman filter fuses IMU + RTK-GPS for accurate localization; navsat_transform converts lat/lon to odometry frame
 
@@ -27,8 +27,8 @@
 - Location: `firmware/src/main.cpp`
 - Contains: Motor driver control (PWM to BTS7960 H-bridges), quadrature encoder ISRs, WS2812 RGB LED status indicator, micro-ROS entity initialization
 - Depends on: Arduino core for ESP32-C3, micro-ROS library (via PlatformIO)
-- Used by: micro-ROS agent (over serial) via `/cmd_vel` subscription and `/odom` publication
-- Key behavior: Subscribes to `/cmd_vel` (geometry_msgs/Twist), applies differential drive kinematics, scales linear/angular velocities to motor PWM (0-255), resets PWM to 0 if no command received within 500ms (watchdog). Publishes encoder counts back to ROS2. LED indicates state (red=waiting, yellow=agent found, green=idle, blue=active, purple=disconnected).
+- Used by: micro-ROS agent (over serial) via `/cmd_vel` subscription. `/odom` publication is NOT yet implemented (planned firmware work — see `.planning/todos/pending/5v-rail-transient-measurement.md`).
+- Key behavior: Subscribes to `/cmd_vel` (geometry_msgs/Twist), applies differential drive kinematics, scales linear/angular velocities to motor PWM (0-255), resets PWM to 0 if no command received within 500ms (watchdog). Encoder ISRs count wheel ticks internally but counts are not currently published to ROS2. LED indicates state (red=waiting, yellow=agent found, green=idle, blue=active, purple=disconnected).
 
 **ROS2 Services Layer (Raspberry Pi):**
 - Purpose: Sensor aggregation, localization, navigation planning

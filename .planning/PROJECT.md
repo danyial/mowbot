@@ -30,13 +30,13 @@ LiDAR data must flow end-to-end: LD19 hardware → `/scan` topic on ROS2 → vis
 - [ ] LD19 driver containerized as a ROS2 service publishing `sensor_msgs/LaserScan` to `/scan`
 - [ ] HAT PCB revision (if required by chosen UART routing) to expose LD19 serial connection cleanly
 - [ ] `/scan` visualized as a 2D polar overlay on the web dashboard's map page
-- [ ] Basic obstacle auto-stop hook: watchdog that zeros `cmd_vel` when `/scan` reports points inside a safety threshold (foundation for future Nav2 work)
 
 ### Out of Scope
 
 <!-- Nothing explicitly excluded yet — user chose "keep scope open". These -->
 <!-- are deferred, NOT rejected. Re-evaluate at next milestone. -->
 
+- Safety auto-stop watchdog (cmd_vel gating based on /scan) — deferred to the next milestone; this milestone proves data pipeline end-to-end, safety behavior comes after /scan is trusted
 - Full Nav2 autonomous waypoint navigation — deferred to a later milestone (LiDAR + costmap integration comes after raw data is flowing)
 - SLAM / map building (slam_toolbox, cartographer) — deferred; needs stable `/scan` + odom TF tree first
 - Blade/cutting actuation and mowing pattern planning — deferred; drive + sense milestones come first

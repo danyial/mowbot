@@ -2,7 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { useMapStore } from "@/lib/store/map-store";
-import type { ScanUnderlayTransform } from "@/components/lidar/scan-canvas";
+import {
+  LIDAR_DISPLAY_YAW_OFFSET,
+  type ScanUnderlayTransform,
+} from "@/components/lidar/scan-canvas";
 
 export interface MapBitmapProps {
   transform: ScanUnderlayTransform;
@@ -153,8 +156,16 @@ export function MapBitmap({ transform }: MapBitmapProps) {
     // reset SLAM map with the robot near the map origin. Both render
     // north-up, world-fixed — the robot marker (drawn by ScanCanvas) is the
     // anchor at canvas center.
+    // Apply the same display rotation ScanCanvas applies to the scan
+    // (standalone branch) so scan + map stay aligned with the mower's
+    // physical forward at canvas 12 o'clock. See scan-canvas.tsx.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(LIDAR_DISPLAY_YAW_OFFSET);
+    ctx.translate(-cx, -cy);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(backing, dx, dy, dw, dh);
+    ctx.restore();
   }, [latest, transform]);
 
   return (

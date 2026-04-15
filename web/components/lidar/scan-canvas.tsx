@@ -60,6 +60,16 @@ const ZOOM_MAX = 64.0;
 // continuous scroll (deltaY≈3). Quick 260415-9ww.
 const WHEEL_ZOOM_K = 0.0015;
 
+// Display rotation applied to scan + map so the mower's physical forward
+// direction renders at canvas 12 o'clock (convention: up = forward).
+// Value is derived from the LiDAR mount orientation: LD19's arrow points
+// mower-BACKWARD on this chassis, so laser_frame +x (angle 0 in /scan)
+// maps to canvas 3 o'clock by default. Rotating the display by -π/2 (CW 90°
+// in canvas) moves the user-observed forward from 9 o'clock to 12 o'clock.
+// If the LiDAR is later remounted with arrow forward, set this to 0.
+// Standalone /lidar route only — anchored /map branch is unaffected.
+export const LIDAR_DISPLAY_YAW_OFFSET = -Math.PI / 2;
+
 interface ScanCartesian {
   // Flat [x0, y0, r0, x1, y1, r1, ...] in robot frame (meters).
   xyr: Float32Array;
@@ -215,7 +225,10 @@ export function ScanCanvas({
       const r = ranges[i];
       if (!isFinite(r)) continue; // NaN / Infinity sentinels — per-beam skip
       if (r < rmin || r > rmax) continue;
-      const a = angle_min + i * angle_increment;
+      const a =
+        angle_min +
+        i * angle_increment +
+        (standalone ? LIDAR_DISPLAY_YAW_OFFSET : 0);
       buf[count * 3 + 0] = r * Math.cos(a);
       buf[count * 3 + 1] = r * Math.sin(a);
       buf[count * 3 + 2] = r;

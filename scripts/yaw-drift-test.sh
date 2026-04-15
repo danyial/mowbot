@@ -63,10 +63,11 @@ read_yaw() {
     source /opt/ros/humble/setup.bash &&
     ros2 topic echo --once --field pose.pose.orientation ${TOPIC} 2>/dev/null |
     python3 -c '
-import sys, yaml
-from tf_transformations import euler_from_quaternion
+import sys, yaml, math
 q = yaml.safe_load(sys.stdin)
-_, _, yaw = euler_from_quaternion([q[\"x\"], q[\"y\"], q[\"z\"], q[\"w\"]])
+x, y, z, w = q[\"x\"], q[\"y\"], q[\"z\"], q[\"w\"]
+# 2D yaw from quaternion — atan2(2(wz+xy), 1-2(y²+z²))
+yaw = math.atan2(2.0*(w*z + x*y), 1.0 - 2.0*(y*y + z*z))
 print(yaw)
 '"
 }

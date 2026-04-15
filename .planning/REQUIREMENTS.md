@@ -16,10 +16,10 @@
 
 ### SLAM → EKF Yaw Fusion (FUSE)
 
-- [ ] **FUSE-01**: `robot_localization` EKF consumes `/slam_toolbox/pose` as a yaw-only `pose0` input; `imu0` yaw index is disabled simultaneously to avoid correlated-input divergence
-- [ ] **FUSE-02**: Stationary yaw drift is measurably reduced — a 60-second stationary drift test on real hardware shows `<1°` yaw drift in `/odometry/filtered`
-- [ ] **FUSE-03**: Operator sees a heading-confidence badge (or equivalent indicator) in the web UI confirming that SLAM-backed yaw fusion is active and healthy
-- [ ] **FUSE-04**: Chosen covariance scaling values for `/slam_toolbox/pose` (and disabled-IMU rationale) are documented in `config/ekf.yaml` comments or an adjacent note
+- [x] **FUSE-01**: `robot_localization` EKF consumes `/pose` as a yaw-only `pose0` input; `imu0` yaw index is disabled simultaneously to avoid correlated-input divergence *(verified live: `/pose` 1-pub/1-sub post-restart, `/odometry/filtered` @ 30 Hz, no param errors)*
+- [ ] **FUSE-02**: Stationary yaw drift is measurably reduced — a 60-second stationary drift test on real hardware shows `<1°` yaw drift in `/odometry/filtered` *(pending outdoor trial — infrastructure ready, `scripts/yaw-drift-test.sh` proven; see `07-02-SUMMARY.md`)*
+- [x] **FUSE-03**: Operator sees a heading-confidence badge (or equivalent indicator) in the web UI confirming that SLAM-backed yaw fusion is active and healthy *(verified live via Playwright: GREEN "SLAM active" at t=3.3s on /pose publish, YELLOW "SLAM stale" at t=3.8s after publish stop, RED "SLAM lost" after >2s — full 3-state transition captured)*
+- [x] **FUSE-04**: Chosen covariance scaling values for `/pose` (and disabled-IMU rationale) are documented in `config/ekf.yaml` comments + `config/slam_toolbox_params.yaml` (scaling lives source-side because robot_localization has no per-sensor override) *(ADR block in ekf.yaml passes greps for `WHY pose0 YAW VARIANCE`, `Chosen:`, `Rejected values`)*
 
 ### `/lidar` Map Polish (MAP)
 
@@ -66,10 +66,10 @@
 | LOGS-02 | Phase 6 | Complete |
 | LOGS-03 | Phase 6 | Complete |
 | LOGS-04 | Phase 6 | Complete |
-| FUSE-01 | Phase 7 | pending |
-| FUSE-02 | Phase 7 | pending |
-| FUSE-03 | Phase 7 | pending |
-| FUSE-04 | Phase 7 | pending |
+| FUSE-01 | Phase 7 | Complete |
+| FUSE-02 | Phase 7 | pending outdoor trial |
+| FUSE-03 | Phase 7 | Complete |
+| FUSE-04 | Phase 7 | Complete |
 | MAP-01  | Phase 8 | pending |
 | MAP-02  | Phase 8 | pending |
 | MAP-03  | Phase 8 | pending |

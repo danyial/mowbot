@@ -40,7 +40,7 @@ log "Installiere udev-Regeln..."
 sudo cp udev/99-mower.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
-log "udev-Regeln installiert (/dev/ttyESP32, /dev/ttyGNSS)"
+log "udev-Regeln installiert (/dev/ttyGNSS)"
 
 # --- 4. I2C aktivieren ---
 if ! ls /dev/i2c-1 &> /dev/null; then

@@ -72,7 +72,7 @@ MowerBot is a DIY autonomous robotic lawn mower built on a distributed robotics 
 - Config files: `config/robot.yaml`, `config/nmea.yaml`, `config/ekf.yaml`, `config/nav2_params.yaml`, `config/cyclonedds.xml`
 - NTRIP credentials: `config/ntrip.env` (RTK base station authentication)
 - `ROS_DOMAIN_ID` - ROS2 network domain (default: 0)
-- `ESP32_DEVICE` - Symlink to ESP32 serial port (default: `/dev/ttyESP32`)
+- `ESP32_DEVICE` - Symlink to ESP32 serial port (default: `/dev/ttyAMA0`)
 - `GNSS_DEVICE` - Symlink to GNSS receiver port (default: `/dev/ttyGNSS`)
 - `GNSS_BAUD` - GNSS baud rate (default: 115200)
 - `IMU_ADDRESS` - I2C address of MPU6050 (default: 0x68)

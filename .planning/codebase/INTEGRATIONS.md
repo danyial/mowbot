@@ -44,8 +44,8 @@
   - Physical pins: Pi GPIO14/15 ↔ ESP32-C3 GPIO20/21
   - Baud rate: 115200 bps
   - Connection method: Pi HAT PCB traces (no external USB cable needed)
-  - Device symlink: `/dev/ttyESP32` (via udev rule)
-  - Hardware: CP2102 USB-to-serial chip on ESP32
+  - Device node: `/dev/ttyAMA0` (Pi BCM2711 PL011 UART, exposed via HAT traces)
+  - Hardware: Direct GPIO UART — no USB-serial bridge in the live path
   - Implementation: `firmware/src/main.cpp` lines 344-346
     ```cpp
     Serial1.begin(115200, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
@@ -204,7 +204,7 @@
 
 **Required Environment Variables:**
 - `ROS_DOMAIN_ID` - ROS2 network domain (default: 0)
-- `ESP32_DEVICE` - Device path for ESP32 UART (default: `/dev/ttyESP32`)
+- `ESP32_DEVICE` - Device path for ESP32 UART (default: `/dev/ttyAMA0`)
 - `GNSS_DEVICE` - Device path for GNSS receiver (default: `/dev/ttyGNSS`)
 - `GNSS_BAUD` - GNSS baud rate (default: 115200)
 - `IMU_ADDRESS` - I2C address of MPU6050 (default: 0x68)
@@ -237,8 +237,8 @@
 ## Device & Hardware Detection
 
 **udev Rules (`udev/99-mower.rules`):**
-- CP2102 (ESP32 USB serial): VID 10c4, PID ea60 → `/dev/ttyESP32`
 - CH341 (UM980 GNSS): VID 1a86, PID 7523 → `/dev/ttyGNSS`
+- ESP32 motor controller uses Pi GPIO14/15 UART (`/dev/ttyAMA0`) directly — no udev symlink
 - Both rules set group to `dialout` and mode 0660 for container access
 
 **Device Setup Script (`setup.sh`):**

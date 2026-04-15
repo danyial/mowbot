@@ -88,7 +88,7 @@
 
 **Key Environment Variables:**
 - `ROS_DOMAIN_ID` - ROS2 network domain (default: 0)
-- `ESP32_DEVICE` - Symlink to ESP32 serial port (default: `/dev/ttyESP32`)
+- `ESP32_DEVICE` - Pi UART device for ESP32 (default: `/dev/ttyAMA0`)
 - `GNSS_DEVICE` - Symlink to GNSS receiver port (default: `/dev/ttyGNSS`)
 - `GNSS_BAUD` - GNSS baud rate (default: 115200)
 - `IMU_ADDRESS` - I2C address of MPU6050 (default: 0x68)
@@ -112,7 +112,7 @@
 - I2C interface enabled on Pi (for MPU6050 sensor)
 - Serial/UART interface enabled on Pi GPIO14/15
 - USB devices connected:
-  - ESP32 with CP2102 serial chip (identifies as `/dev/ttyESP32`)
+  - ESP32 motor controller via Pi GPIO14/15 UART (exposed as `/dev/ttyAMA0`)
   - UM980 RTK-GNSS receiver with CH341 converter (identifies as `/dev/ttyGNSS`)
 
 **Production:**

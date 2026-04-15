@@ -146,7 +146,7 @@ MowerBot/
 │   └── (various build/test scripts, if any)
 │
 ├── udev/                               # Linux device symlink rules
-│   └── 99-mower.rules                  # udev rules to create persistent /dev/ttyESP32 and /dev/ttyGNSS symlinks
+│   └── 99-mower.rules                  # udev rules to create persistent /dev/ttyGNSS and /dev/ttyLIDAR symlinks
 │
 ├── docs/                               # Documentation
 │   ├── README.md                       # High-level project overview
@@ -199,7 +199,7 @@ MowerBot/
 
 **`udev/`:**
 - Purpose: Linux device symlink rules to create persistent device names
-- Contains: `99-mower.rules` mapping USB device IDs to `/dev/ttyESP32` (CP2102 USB-UART) and `/dev/ttyGNSS` (CH341 USB-UART)
+- Contains: `99-mower.rules` mapping USB device IDs to `/dev/ttyGNSS` (CH341 USB-UART) and `/dev/ttyLIDAR` (Pi UART3 kernel node); ESP32 uses Pi GPIO14/15 UART as `/dev/ttyAMA0` directly, no symlink needed
 - Purpose: Without these rules, device paths change on reboot (e.g., `/dev/ttyUSB0` ↔ `/dev/ttyUSB1`), breaking Docker device mappings
 - Committed: Yes
 - Installation: `setup.sh` copies to `/etc/udev/rules.d/`

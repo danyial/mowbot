@@ -33,7 +33,7 @@ Browser (Phone/Laptop)
                       ┌─────────┬──────────┬────┴────┬─────────┐
                    [gnss]    [imu]      [nav]   [ntrip]  [micro-ros-agent]
                      |         |                   |            |
-                /dev/ttyGNSS  I2C             NTRIP Base    /dev/ttyESP32
+                /dev/ttyGNSS  I2C             NTRIP Base    /dev/ttyAMA0
                   (UM980)   (MPU6050)          Station        (ESP32)
 ```
 
@@ -58,7 +58,7 @@ chmod +x setup.sh
 
 ### Configuration
 
-1. Edit `.env` — verify device paths (`/dev/ttyESP32`, `/dev/ttyGNSS`)
+1. Edit `.env` — verify device paths (`/dev/ttyAMA0`, `/dev/ttyGNSS`)
 2. Edit `config/ntrip.env` — set your RTK base station credentials
 
 ### udev Rules
@@ -75,10 +75,11 @@ This creates persistent symlinks for the USB devices:
 
 | Device | Symlink | Hardware |
 |--------|---------|----------|
-| CP2102 (ESP32) | `/dev/ttyESP32` | Motor controller |
 | CH341 (UM980) | `/dev/ttyGNSS` | GNSS receiver |
 
 Without these rules, the device paths may change on every reboot (e.g. `/dev/ttyUSB0` vs `/dev/ttyUSB1`), which would break the Docker container device mappings.
+
+The ESP32 motor controller is wired to the Pi via HAT-internal UART (GPIO14/15) and exposed as `/dev/ttyAMA0` — no udev symlink needed.
 
 ### Start
 

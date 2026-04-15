@@ -134,7 +134,7 @@ services:
       # Phase 6 — guarantees label filter match regardless of compose
       # invocation cwd; docker-adapter reads this to build the
       # com.docker.compose.project=<name> filter.
-      - COMPOSE_PROJECT_NAME=mowerbot
+      - COMPOSE_PROJECT_NAME=mowbot
     volumes:
       - ./config:/app/config
       - mower-data:/app/data

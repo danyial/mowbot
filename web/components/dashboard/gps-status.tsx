@@ -1,11 +1,12 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
 import { useGpsStore } from "@/lib/store/gps-store";
 import { StatusCard } from "./status-card";
 import { Badge } from "@/components/ui/badge";
 import { ValueDisplay } from "@/components/shared/value-display";
-import { formatCoordinate, formatNumber } from "@/lib/utils/formatting";
+import { formatCoordinate } from "@/lib/utils/formatting";
 
 const fixBadgeVariant: Record<string, "success" | "warning" | "error" | "info" | "secondary"> = {
   no_fix: "error",
@@ -23,20 +24,66 @@ const fixLabels: Record<string, string> = {
   rtk_fixed: "RTK Fixed",
 };
 
+/** NavSatStatus.status numeric codes (REP-145). -2 is our sentinel for "never received". */
+const fixCodeLabels: Record<number, string> = {
+  [-2]: "NO_MSG",
+  [-1]: "NO_FIX",
+  0: "FIX",
+  1: "SBAS",
+  2: "GBAS",
+};
+
+/** position_covariance_type values (sensor_msgs/NavSatFix). */
+const covTypeLabels: Record<number, string> = {
+  0: "unbekannt",
+  1: "approximiert",
+  2: "diag",
+  3: "voll",
+};
+
 function formatAccuracy(meters: number): { value: string; unit: string; color: string } {
   if (meters < 0) return { value: "--", unit: "", color: "" };
   const cm = meters * 100;
   if (cm < 5) return { value: cm.toFixed(1), unit: "cm", color: "text-green-500" };
   if (cm < 50) return { value: cm.toFixed(1), unit: "cm", color: "text-yellow-500" };
   if (cm < 100) return { value: cm.toFixed(0), unit: "cm", color: "text-red-500" };
-  return { value: (meters).toFixed(2), unit: "m", color: "text-red-500" };
+  return { value: meters.toFixed(2), unit: "m", color: "text-red-500" };
+}
+
+function formatAge(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60_000).toFixed(1)} min`;
 }
 
 export function GpsStatus() {
-  const { latitude, longitude, fixStatus, accuracy, lastUpdate } = useGpsStore();
+  const {
+    latitude,
+    longitude,
+    altitude,
+    fixStatus,
+    fixStatusCode,
+    accuracy,
+    verticalAccuracy,
+    covarianceType,
+    lastUpdate,
+  } = useGpsStore();
 
-  const isStale = Date.now() - lastUpdate > 5000;
-  const acc = formatAccuracy(accuracy);
+  const [expanded, setExpanded] = useState(false);
+
+  // Tick to re-render "last-update age" without a new /fix message.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 500);
+    return () => clearInterval(t);
+  }, []);
+
+  const ageMs = lastUpdate > 0 ? Date.now() - lastUpdate : -1;
+  const isStale = ageMs > 5000;
+  const accH = formatAccuracy(accuracy);
+  const accV = formatAccuracy(verticalAccuracy);
+  const acc2H = formatAccuracy(accuracy > 0 ? accuracy * 2 : -1);
+  const acc2V = formatAccuracy(verticalAccuracy > 0 ? verticalAccuracy * 2 : -1);
 
   return (
     <StatusCard
@@ -45,9 +92,14 @@ export function GpsStatus() {
       iconColor={fixStatus === "rtk_fixed" ? "text-green-500" : undefined}
     >
       <div className="space-y-3">
-        <Badge variant={fixBadgeVariant[fixStatus] || "secondary"}>
-          {fixLabels[fixStatus] || "Unknown"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={fixBadgeVariant[fixStatus] || "secondary"}>
+            {fixLabels[fixStatus] || "Unknown"}
+          </Badge>
+          <span className="text-xs text-slate-400 font-mono">
+            status={fixStatusCode} ({fixCodeLabels[fixStatusCode] || "?"})
+          </span>
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <ValueDisplay
@@ -62,23 +114,75 @@ export function GpsStatus() {
 
         <div className="grid grid-cols-2 gap-2">
           <ValueDisplay
-            label="Genauigkeit"
-            value={acc.value}
-            unit={acc.unit}
-            valueClassName={acc.color}
+            label="Genauigkeit (1σ)"
+            value={accH.value}
+            unit={accH.unit}
+            valueClassName={accH.color}
           />
           <ValueDisplay
             label="Letzter Fix"
             value={
-              lastUpdate > 0
-                ? isStale
-                  ? "Stale"
-                  : `${((Date.now() - lastUpdate) / 1000).toFixed(0)}s`
-                : "--"
+              ageMs < 0
+                ? "--"
+                : isStale
+                ? "Stale"
+                : formatAge(ageMs)
             }
             valueClassName={isStale ? "text-yellow-500" : undefined}
           />
         </div>
+
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-center justify-between rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-slate-500 hover:text-slate-200 transition-colors"
+        >
+          <span>Details</span>
+          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+
+        {expanded && (
+          <div className="space-y-2 rounded border border-slate-800 bg-slate-950/40 p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <ValueDisplay
+                label="Horizontal 2σ (95%)"
+                value={acc2H.value}
+                unit={acc2H.unit}
+                valueClassName={acc2H.color}
+              />
+              <ValueDisplay
+                label="Vertikal 1σ"
+                value={accV.value}
+                unit={accV.unit}
+                valueClassName={accV.color}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <ValueDisplay
+                label="Höhe (MSL)"
+                value={lastUpdate > 0 ? altitude.toFixed(2) : "--"}
+                unit="m"
+              />
+              <ValueDisplay
+                label="Vertikal 2σ (95%)"
+                value={acc2V.value}
+                unit={acc2V.unit}
+                valueClassName={acc2V.color}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <ValueDisplay
+                label="Cov-Typ"
+                value={covTypeLabels[covarianceType] || "?"}
+              />
+              <ValueDisplay
+                label="Alter"
+                value={ageMs < 0 ? "--" : formatAge(ageMs)}
+                valueClassName={isStale ? "text-yellow-500" : undefined}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </StatusCard>
   );

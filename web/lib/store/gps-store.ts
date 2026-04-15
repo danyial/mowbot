@@ -30,8 +30,11 @@ interface GpsState {
   longitude: number | null;
   altitude: number;
   fixStatus: FixStatus;
+  fixStatusCode: number; // raw NavSatStatus.status value (-1..2); -2 = never received
   hdop: number;
-  accuracy: number; // horizontal accuracy in meters (from covariance)
+  accuracy: number; // horizontal accuracy 1σ in meters (from covariance)
+  verticalAccuracy: number; // vertical accuracy 1σ in meters (covariance[8]); -1 if unknown
+  covarianceType: number; // 0=unknown, 1=approximated, 2=diag_known, 3=known
   satelliteCount: number;
   lastUpdate: number;
 
@@ -59,8 +62,11 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   longitude: null,
   altitude: 0,
   fixStatus: "no_fix",
+  fixStatusCode: -2,
   hdop: 99,
   accuracy: -1,
+  verticalAccuracy: -1,
+  covarianceType: 0,
   satelliteCount: 0,
   lastUpdate: 0,
 
@@ -104,10 +110,11 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         ? Math.sqrt(msg.position_covariance[0])
         : 99;
 
-    // Horizontal accuracy in meters from covariance diagonal
-    // covariance[0] = variance lat (m²), covariance[4] = variance lon (m²)
+    // Horizontal accuracy in meters from covariance diagonal (1σ)
+    // covariance[0] = variance east (m²), covariance[4] = variance north (m²), covariance[8] = variance up
     const covLat = msg.position_covariance[0];
     const covLon = msg.position_covariance[4];
+    const covUp = msg.position_covariance[8];
     const accuracy =
       msg.position_covariance_type > 0 &&
       covLat != null && covLon != null &&
@@ -115,14 +122,22 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       covLat > 0 && covLon > 0
         ? Math.sqrt((covLat + covLon) / 2)
         : -1;
+    const verticalAccuracy =
+      msg.position_covariance_type > 0 &&
+      covUp != null && isFinite(covUp) && covUp > 0
+        ? Math.sqrt(covUp)
+        : -1;
 
     set({
       latitude: msg.latitude,
       longitude: msg.longitude,
       altitude: msg.altitude,
       fixStatus,
+      fixStatusCode: msg.status.status,
       hdop,
       accuracy,
+      verticalAccuracy,
+      covarianceType: msg.position_covariance_type,
       lastUpdate: Date.now(),
       track: newTrack,
       boundaryPoints: newBoundaryPoints,

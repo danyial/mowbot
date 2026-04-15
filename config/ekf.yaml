@@ -1,5 +1,39 @@
 # EKF Sensor-Fusion (robot_localization)
 # Fusioniert GNSS + IMU + Odometrie zu einer stabilen Pose
+#
+# ═════ Phase 7 FUSE-01/04 ADR ════════════════════════════════════════════════════
+#  WHY pose0 YAW VARIANCE IS NOT SET HERE:
+#    robot_localization Humble has NO per-sensor measurement-covariance override
+#    parameter — the EKF always consumes whatever covariance arrives in the message.
+#    The "conservative yaw variance start" (CONTEXT.md D-05, ~0.05 rad²) is therefore
+#    materialized source-side via `yaw_covariance_scale` in
+#    `config/slam_toolbox_params.yaml`, NOT in this file. See 07-RESEARCH.md.
+#
+#  WHY imu0 YAW-POSITION IS DISABLED (imu0_config[5] = false):
+#    A 6-DoF sensor-fusion EKF must not ingest two correlated sources of absolute
+#    yaw position (integrated-IMU yaw + SLAM scan-match yaw) — the filter treats them
+#    as independent updates and diverges. SLAM yaw is the trustworthy absolute yaw
+#    (drift-free in a mapped environment); IMU integrated yaw drifts with gyro bias.
+#    Note: imu0_config[5] was already false in the v2.1 config — the FUSE-01
+#    "simultaneity" requirement is satisfied by the fact that pose0 is added in the
+#    SAME commit that re-affirms imu0_config[5]=false, so the correlated-input state
+#    never transiently exists.
+#
+#  WHY imu0_config[11] (yaw_vel) STAYS TRUE (CONTEXT.md D-08):
+#    Angular velocity from the MPU-6050 gyro is a DIRECT, high-rate (30 Hz) gyro
+#    measurement orthogonal to SLAM's pose-based yaw — the correlation concern
+#    targets yaw POSITION only. Disabling yaw_vel would force yaw-rate estimation
+#    to come from finite-differencing /pose at ~2 Hz (slam_toolbox's map_update_interval),
+#    which is noisier and slower. Do NOT "simplify" this back to false.
+#
+#  Chosen: yaw_covariance_scale: 1.0 (slam_toolbox_params.yaml) — neutral starting
+#    point; native /pose covariance was not capturable at config-edit time (slam
+#    publishes /pose only on successful scan-match with a motion delta, and the
+#    mower was stationary). First outdoor drift-test result will drive the tune.
+#
+#  Rejected values (update as drift-test trials reject them):
+#    (none yet — first outdoor trial pending)
+# ═════════════════════════════════════════════════════════════════════════════════
 
 ekf_filter_node:
   ros__parameters:
@@ -14,16 +48,32 @@ ekf_filter_node:
     world_frame: odom
 
     # IMU (MPU-6050, Topic: /imu)
+    # Phase 7 FUSE-01: yaw-position index (index 5) stays FALSE — SLAM owns absolute yaw.
+    # yaw_vel (index 11) stays TRUE — direct gyro measurement, orthogonal to SLAM yaw.
     imu0: /imu
     imu0_config: [false, false, false,    # x, y, z Position — nicht von IMU
-                  false, false, false,     # roll, pitch, yaw — nicht direkt
+                  false, false, false,     # roll, pitch, yaw — SLAM owns yaw (FUSE-01)
                   false, false, false,     # vx, vy, vz — nicht von IMU
-                  true,  true,  true,      # roll_vel, pitch_vel, yaw_vel
+                  true,  true,  true,      # roll_vel, pitch_vel, yaw_vel — direct gyro (D-08)
                   false, false, false]     # ax, ay, az — deaktiviert (Drift ohne Encoder)
     imu0_differential: false
     imu0_relative: false
     imu0_remove_gravitational_acceleration: true
     imu0_queue_size: 10
+
+    # SLAM pose (slam_toolbox, Topic: /pose, PoseWithCovarianceStamped) — Phase 7 FUSE-01
+    # Yaw-only fusion (CONTEXT.md D-02): index 5 (yaw position) is the ONLY true.
+    # Covariance override lives source-side in slam_toolbox_params.yaml#yaw_covariance_scale
+    # (see ADR block at top of this file for why).
+    pose0: /pose
+    pose0_config: [false, false, false,   # x, y, z — SLAM x/y fusion would create TF cycle
+                   false, false, true,    # roll, pitch, YAW — yaw-only (FUSE-01)
+                   false, false, false,   # vx, vy, vz — pose msg has no velocity
+                   false, false, false,   # roll_vel, pitch_vel, yaw_vel — same
+                   false, false, false]   # ax, ay, az — pose msg has no accel
+    pose0_differential: false             # /pose publishes absolute map-frame yaw, not deltas
+    pose0_relative: false
+    pose0_queue_size: 5
 
     # Odometrie (aus Rad-Encodern oder Schaetzung)
     # Fuer den PoC ohne Encoder deaktiviert.

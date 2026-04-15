@@ -77,3 +77,21 @@ slam_toolbox:
     use_response_expansion: true
     min_pass_through: 2
     occupancy_threshold: 0.1
+
+    # ─── Phase 7 FUSE-01/04: yaw fusion into robot_localization EKF ───────────────
+    # slam_toolbox publishes /pose (PoseWithCovarianceStamped) consumed by ekf_filter_node
+    # as pose0 (yaw-only). These scales multiply slam_toolbox's internal covariance
+    # before publishing, letting us tune trust WITHOUT touching ekf.yaml (robot_localization
+    # has NO per-sensor measurement-covariance override — source-side scaling is the canonical
+    # mechanism).  See .planning/phases/07-slam-pose-ekf-yaw-fusion/07-RESEARCH.md.
+    #
+    # Starting point (CONTEXT.md D-05 "conservative start"):
+    #   yaw_covariance_scale = 1.0  →  roughly ~0.05 rad² published yaw variance (≈13° stddev)
+    # Tuning loop (D-06): if outdoor 60-s stationary drift <1° with margin → ship as-is.
+    # Tighten (smaller value) only if drift is comfortably <<1° AND yaw feels sluggish
+    # under motion. Aggressive values (<0.1) rejected at D-07 — SLAM bias would lock in.
+    #
+    # Rejected values (fill in as outdoor trials reject them):
+    #   (none yet — first outdoor trial pending)
+    position_covariance_scale: 1.0    # x/y not consumed by EKF (pose0 yaw-only), value is neutral
+    yaw_covariance_scale: 1.0         # FUSE-01 initial — tune down after first outdoor PASS run

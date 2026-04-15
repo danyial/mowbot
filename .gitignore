@@ -36,3 +36,7 @@ hardware/.history/
 hardware/*-backups/
 hardware/*.lck
 hardware/fp-info-cache
+
+# Phase 4 Plan 04-02 — local Playwright env for regression sentinel
+.planning/phases/04-live-mapping-slam-toolbox/_playwright_env/node_modules/
+.planning/phases/04-live-mapping-slam-toolbox/_playwright_env/package-lock.json

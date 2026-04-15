@@ -11,6 +11,7 @@
 - [ ] **Phase 1: Hardware & UART Routing** — Land LD19 on a dedicated Pi 4 PL011 UART without breaking the existing ESP32 HAT link
 - [ ] **Phase 2: LiDAR Driver & `/scan` Publication** — Containerize `ldlidar_stl_ros2`, publish `sensor_msgs/LaserScan` at 10 Hz with correct TF + QoS
 - [ ] **Phase 3: Web Visualization — `/scan` on the Map Page** — Render 2D polar scan overlay on `map/page.tsx` via throttled CBOR rosbridge (Core Value gate)
+- [ ] **Phase 4: Live Mapping with slam_toolbox** — Containerize `slam_toolbox`, publish `/map` occupancy grid from `/scan` (scan-matching without wheel odom), render live on `/lidar`
 
 ## Phase Details
 
@@ -73,7 +74,8 @@
 | 0. GSD Brownfield Adoption | 1/1 | Complete   | 2026-04-14 |
 | 1. Hardware & UART Routing | 0/1 | Not started | - |
 | 2. LiDAR Driver & `/scan` Publication | 0/0 | Not started | - |
-| 3. Web Visualization — `/scan` on the Map Page | 0/2 | Not started | - |
+| 3. Web Visualization — `/scan` on the Map Page | 2/2 | Human needed (outdoor SC#1) | 2026-04-14 |
+| 4. Live Mapping with slam_toolbox | 0/0 | Not planned | - |
 
 ## Coverage
 
@@ -84,20 +86,43 @@
 ## Dependency Chain
 
 ```
-Phase 0 (META)  →  Phase 1 (Hardware/UART)  →  Phase 2 (Driver/TF/QoS)  →  Phase 3 (Web viz, Core Value)
+Phase 0 (META)  →  Phase 1 (Hardware/UART)  →  Phase 2 (Driver/TF/QoS)  →  Phase 3 (Web viz, Core Value)  →  Phase 4 (Live Mapping)
 ```
 
 Hard linear sequence. No parallelization across phases in this milestone:
 - Phase 2 cannot begin without `/dev/ttyLIDAR` from Phase 1 (no stable port = no driver testing).
 - Phase 3 cannot begin without `/scan` from Phase 2 (nothing to visualize).
+- Phase 4 cannot begin without `/scan` + web viz infrastructure from Phase 3 (slam input + render target).
 
 ## Explicitly Deferred (Not in this Roadmap)
 
 Per PROJECT.md Out of Scope — re-evaluate at next milestone, do not add phases for these now:
 - Safety auto-stop watchdog (`/cmd_vel` gating on `/scan`) — deferred; needs real outdoor scan data to tune thresholds.
 - Nav2 autonomous navigation — deferred; depends on trusted `/scan` + costmaps.
-- `slam_toolbox` map building — deferred; depends on stable `/scan` + odom TF tree.
 - HAT v2.1 PCB respin with dedicated LD19 connector footprint — deferred to v2; pigtail on HAT v2.0 suffices for this milestone.
+
+*(`slam_toolbox` map building moved into the roadmap as Phase 4 on 2026-04-15.)*
+
+### Phase 4: Live Mapping with slam_toolbox
+
+**Goal**: A new `slam` Docker service runs `slam_toolbox`'s `online_async_slam_toolbox_node` consuming `/scan` + `/odometry/filtered`, publishes a live `nav_msgs/OccupancyGrid` on `/map` with a correct `map → odom` TF, and the web `/lidar` page renders the occupancy grid as a bitmap underneath the scan overlay — operator sees "everything the robot has seen so far, stitched together" without needing RViz or Foxglove.
+
+**Depends on:** Phase 3
+**Requirements**: TBD (likely MAP-01..MAP-05 to be added in REQUIREMENTS.md during planning)
+**Success Criteria (what must be TRUE):**
+  1. `docker compose up slam` brings up `slam_toolbox` in async mode; `ros2 topic hz /map` shows updates at ≥ 0.5 Hz under indoor scan; `ros2 topic echo /map --once` returns a populated `nav_msgs/OccupancyGrid`.
+  2. TF tree contains `map → odom → base_link → laser_frame` without warnings under `ros2 run tf2_tools view_frames`; the `map → odom` transform is published by slam_toolbox, not static.
+  3. Operator opens `/lidar` page; within 5 s the occupancy bitmap is drawn under the live scan overlay, persists after `/scan` stops (unlike the current overlay), and clears after pressing "Reset Map".
+  4. Scan-matching fallback: with the robot physically stationary indoors for 60 s, the map does NOT drift — pose covariance stays bounded; verified by map center staying within ±5 cm of a reference wall in the bitmap.
+  5. When ESP32 `/odom` publisher ships later (HW-04 todo), dropping real wheel odom into the EKF input stream requires zero web-side changes — documented and sanity-checked.
+
+**Scope notes:**
+- Relies on slam_toolbox's scan-matching to estimate motion without wheel odom — works best indoors at slow speed. Later when firmware `/odom` ships (separate HW-04 todo), SLAM quality improves automatically, web layer unchanged.
+- Preserve existing `/lidar` zoom/pan/reset UX from quicks `260414-w8p` + `260415-9ww`.
+- Honest v0 limitation: no loop closure in async mode — accumulated drift on long trajectories expected.
+
+**Plans:** 0 plans
+- [ ] TBD (run `/gsd-plan-phase 4` to break down)
 
 ---
 *Roadmap defined: 2026-04-14*

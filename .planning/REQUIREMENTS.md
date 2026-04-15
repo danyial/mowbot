@@ -9,10 +9,10 @@
 
 ### Container Logs (LOGS)
 
-- [ ] **LOGS-01**: Operator can see a live list of mower Docker containers in the `/logs` route, auto-refreshing as containers start/stop
-- [ ] **LOGS-02**: Operator can select a container and see a live-tailing log stream with an initial backfill of recent lines
-- [ ] **LOGS-03**: Log viewer auto-scrolls to the bottom on new lines, and pauses auto-scroll when the operator scrolls up to read older lines
-- [ ] **LOGS-04**: Operator can filter the log stream by a time window (e.g., last 5 min, last 1 h) applied as a `since=` server-side filter
+- [x] **LOGS-01**: Operator can see a live list of mower Docker containers in the `/logs` route, auto-refreshing as containers start/stop
+- [x] **LOGS-02**: Operator can select a container and see a live-tailing log stream with an initial backfill of recent lines
+- [x] **LOGS-03**: Log viewer auto-scrolls to the bottom on new lines, and pauses auto-scroll when the operator scrolls up to read older lines
+- [x] **LOGS-04**: Operator can filter the log stream by a time window (e.g., last 5 min, last 1 h) applied as a `since=` server-side filter
 
 ### SLAM → EKF Yaw Fusion (FUSE)
 
@@ -62,10 +62,10 @@
 
 | REQ-ID  | Phase   | Status  |
 |---------|---------|---------|
-| LOGS-01 | Phase 6 | pending |
-| LOGS-02 | Phase 6 | pending |
-| LOGS-03 | Phase 6 | pending |
-| LOGS-04 | Phase 6 | pending |
+| LOGS-01 | Phase 6 | Complete |
+| LOGS-02 | Phase 6 | Complete |
+| LOGS-03 | Phase 6 | Complete |
+| LOGS-04 | Phase 6 | Complete |
 | FUSE-01 | Phase 7 | pending |
 | FUSE-02 | Phase 7 | pending |
 | FUSE-03 | Phase 7 | pending |

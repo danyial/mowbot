@@ -103,6 +103,21 @@ services:
       ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 
   # ============================================
+  # foxglove_bridge — Foxglove WebSocket (native protocol, port 8765)
+  # Alternative to rosbridge for Foxglove Studio: avoids the rosbridge_server
+  # v2 JSON serializer bug on float[]-bearing messages (LaserScan, Odometry,
+  # TFMessage). Web UI continues to use rosbridge on :9090.
+  # ============================================
+  foxglove_bridge:
+    <<: *ros-common
+    image: ghcr.io/danyial/mowbot/foxglove-bridge:humble
+    container_name: mower-foxglove-bridge
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      exec ros2 launch foxglove_bridge foxglove_bridge_launch.xml
+      port:=8765 address:=0.0.0.0"
+
+  # ============================================
   # MowControl — Web-App
   # ============================================
   web:

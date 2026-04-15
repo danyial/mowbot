@@ -41,6 +41,12 @@ services:
       args:
         ROS_DISTRO: humble
 
+  foxglove_bridge:
+    build:
+      context: ./docker/foxglove_bridge
+      args:
+        ROS_DISTRO: humble
+
   web:
     build:
       context: ./web

@@ -10,6 +10,7 @@ import { useOdometryStore } from "@/lib/store/odometry-store";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { useScanStore } from "@/lib/store/scan-store";
 import { useMapStore } from "@/lib/store/map-store";
+import { useSlamPoseStore } from "@/lib/store/slam-pose-store";
 import type {
   NavSatFix,
   ImuMessage,
@@ -19,6 +20,7 @@ import type {
   MowerStatus,
   LaserScan,
   OccupancyGrid,
+  PoseWithCovarianceStamped,
 } from "@/lib/types/ros-messages";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
@@ -79,6 +81,9 @@ function setupSubscriptions() {
     }),
     subscribe<OccupancyGrid>("MAP", (msg) => {
       useMapStore.getState().updateMap(msg);
+    }),
+    subscribe<PoseWithCovarianceStamped>("POSE", (msg) => {
+      useSlamPoseStore.getState().updatePose(msg);
     }),
     subscribe<StringMsg>("MOWER_STATUS", (msg) => {
       try {

@@ -11,7 +11,7 @@ const PRESETS = {
 };
 
 test("parseSincePreset returns now - <seconds> for every declared preset", async () => {
-  const { parseSincePreset } = await import("../lib/server/since-preset.js");
+  const { parseSincePreset } = await import("../lib/server/since-preset.mjs");
   for (const [preset, seconds] of Object.entries(PRESETS)) {
     const now = Math.floor(Date.now() / 1000);
     const got = parseSincePreset(preset);
@@ -23,11 +23,11 @@ test("parseSincePreset returns now - <seconds> for every declared preset", async
 });
 
 test("parseSincePreset(null) returns null (no-filter passthrough)", async () => {
-  const { parseSincePreset } = await import("../lib/server/since-preset.js");
+  const { parseSincePreset } = await import("../lib/server/since-preset.mjs");
   assert.equal(parseSincePreset(null), null);
 });
 
 test("parseSincePreset('bogus') returns null (graceful unknown)", async () => {
-  const { parseSincePreset } = await import("../lib/server/since-preset.js");
+  const { parseSincePreset } = await import("../lib/server/since-preset.mjs");
   assert.equal(parseSincePreset("bogus"), null);
 });

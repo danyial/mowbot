@@ -10,7 +10,7 @@ function makeFrame(streamType, payload) {
 }
 
 test("demuxBuffer splits stdout (type=1) and stderr (type=2) frames", async () => {
-  const { demuxBuffer } = await import("../lib/server/demux.js");
+  const { demuxBuffer } = await import("../lib/server/demux.mjs");
   const buf = Buffer.concat([
     makeFrame(1, "hello\n"),
     makeFrame(2, "oops\n"),
@@ -21,7 +21,7 @@ test("demuxBuffer splits stdout (type=1) and stderr (type=2) frames", async () =
 });
 
 test("demuxBuffer handles a multi-frame concatenation", async () => {
-  const { demuxBuffer } = await import("../lib/server/demux.js");
+  const { demuxBuffer } = await import("../lib/server/demux.mjs");
   const buf = Buffer.concat([
     makeFrame(1, "a\n"),
     makeFrame(1, "b\n"),
@@ -33,7 +33,7 @@ test("demuxBuffer handles a multi-frame concatenation", async () => {
 });
 
 test("demuxBuffer skips unknown stream types silently", async () => {
-  const { demuxBuffer } = await import("../lib/server/demux.js");
+  const { demuxBuffer } = await import("../lib/server/demux.mjs");
   const buf = makeFrame(3, "weird\n"); // type 3 is undefined in Docker protocol
   const { stdout, stderr } = demuxBuffer(buf);
   assert.equal(stdout, "");

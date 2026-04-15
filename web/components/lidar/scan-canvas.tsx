@@ -764,7 +764,7 @@ function drawScan(
   // renders as small dots (not blobs) and default zoom renders as ~2 px dots.
   // Quick 260415-9ww.
   const pointSize = standalone && !projector
-    ? Math.max(1, Math.min(3, view.zoom * 0.15))
+    ? Math.max(2, Math.min(5, view.zoom * 0.25))
     : 3;
 
   for (let i = 0; i < count; i++) {

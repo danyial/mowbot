@@ -1,50 +1,57 @@
 ---
-title: /lidar page — live SLAM map during scanning
+title: /lidar page — map-scan alignment while mower is moving (post-Phase 4 residuals)
 area: web + ros2
 created: 2026-04-14
 updated: 2026-04-15
-source: post-phase-3 user feedback
+source: post-phase-3 user feedback → Phase 4 residuals
 priority: medium
-related: quick/260414-w8p-lidar-standalone-page, quick/260415-9ww-lidar-deeper-zoom, Phase 3 (/scan overlay)
+related: Phase 4 (slam_toolbox), quick 260414-w8p, quick 260415-9ww, 5v-rail-transient-measurement, lidar-heading-gps-fusion
 ---
 
-# /lidar — live mapping during scanning
+# /lidar — residuals after Phase 4
 
-Captured 2026-04-14. Item 1 (deeper zoom + 15 m range + brighter near-range viridis) shipped 2026-04-15 via quick `260415-9ww`. Only Item 2 remains.
+Original todo captured 2026-04-14 after Phase 3 covered "live SLAM map during scanning". **Most of this shipped in Phase 4 (2026-04-15)** — `slam_toolbox` containerized, `/map` OccupancyGrid published live, rendered on `/lidar` as MapBitmap with zoom/pan/reset UX, stale-badge + viridis legend preserved, robot marker + scale bar added, Eraser (client-side clear + `/slam_toolbox/clear_changes`).
 
-## Real map built during scanning (live SLAM)
+## What's still open
 
-**Goal:** While the mower drives, accumulate `/scan` + `/odom` (or `/odometry/filtered`) into a persistent 2D occupancy map and render it live on `/lidar`. So the page evolves from "current 360° sweep" into "everything I've seen so far, stitched together by pose."
+### Map ↔ Scan alignment while moving
 
-**Stack options to evaluate (pick one, don't do all):**
+Current v0: scan is drawn in laser_frame (not rotated by TF), map in map-frame. When the robot physically rotates, map stays fixed in world-frame and scan stays fixed in robot-frame — so they visibly misalign. When stationary with EKF IMU drifting, map→base_link yaw spins unchecked.
 
-1. **`slam_toolbox`** (ROS2 Humble, actively maintained, default for most Nav2 tutorials). Publishes `/map` as `nav_msgs/OccupancyGrid` and a `map → odom` TF. Docker it alongside existing nav stack.
-2. **`cartographer_ros`** — more accurate but heavier; probably overkill for a mower.
-3. **Roll-our-own**: client-side occupancy accumulator in the browser using `/scan` + `/odom`, no ROS SLAM node. Cheapest to ship, worst accuracy (no loop closure, drifts with odom). Could be the v0 while evaluating slam_toolbox for v1.
+Blocker: a stable `map → base_link` yaw source. Two paths both gated on other todos:
 
-**Preconditions (must be real before this is useful):**
-- `/odom` publisher on ESP32 firmware (currently NOT published — see `5v-rail-transient-measurement.md` Part A). Without `/odom` the EKF `/odometry/filtered` is IMU-only which drifts badly.
-- A TF chain `odom → base_link → laser_frame` that's accurate enough for stitching. Static TF for `base_link → laser_frame` already exists in the nav launch file; `odom → base_link` depends on `/odom`.
+1. **Firmware `/odom` publisher landing** (`5v-rail-transient-measurement.md` Part A, HW-04). Real wheel encoder odom stops the EKF yaw from drifting. Then `map → base_link` composition becomes trustworthy. Cleanest architectural fix.
+2. **Feed slam_toolbox's pose into the EKF** (`lidar-heading-gps-fusion.md`). SLAM's scan-matched yaw replaces the drifting IMU-only yaw. Works even without wheel `/odom`, as long as SLAM is producing stable estimates indoors.
 
-**Web-side work:**
-- Subscribe to `/map` (`nav_msgs/OccupancyGrid`) via rosbridge. Under CBOR the `data` array will be typed — the Plan 03-01 scrubber's typed-array exemption already covers this.
-- New render mode in `ScanCanvas` (or a sibling component): bitmap of the occupancy grid + live scan overlay on top.
-- Persistence: let the occupancy map remain on the page even when `/scan` goes stale. Add a "reset map" control.
-- Zoom/pan already works for the standalone canvas — reuse it for the map view.
+### Map anchor assumes robot at map origin
 
-**Likely shape:** This is probably its own phase, not a quick task. The firmware `/odom` gate alone is ≥ half-day of work. A new milestone "v2.2 — Live mapping" could cover:
-- Phase A: ESP32 `/odom` publisher (unblocks everything downstream)
-- Phase B: slam_toolbox containerized, `/map` published live
-- Phase C: web `/lidar` page renders `/map` + scan overlay, persistent across sessions
+MapBitmap in `web/components/lidar/map-bitmap.tsx` renders the grid using `info.origin.position` as bottom-left offset from canvas center (robot assumed at map-frame (0, 0)). Only true immediately after `Eraser` / `clear_changes`. Once the mower moves away from the SLAM start pose, scan and map drift apart even without rotation issues.
 
-## Notes
+Fix: subscribe to `/tf` (already done via `useTfStore` added in commit 12dd12c), extract the `map → base_link` translation, subtract it from the grid origin offset so the grid scrolls under the robot as it moves. Web-only change, ~30 min work — but only becomes visible once the robot actually moves, which on an indoor test setup is rare.
 
-- Zoom tweak is trivial and could ship as another /gsd-quick in minutes.
-- Live mapping depends on firmware — if `/odom` still isn't there, start with the firmware todo (`5v-rail-transient-measurement.md` Part A) before touching web code.
+### Persistence across sessions
+
+Current `useMapStore` is in-memory only. Reload = fresh empty map until next `/map` publish repopulates it. Not urgent, but nice-to-have: localStorage backing of the last-seen OccupancyGrid.
+
+### Honest-reset (server-side)
+
+Eraser is a client-side clear + best-effort `clear_changes` (harmless no-op in Humble async mode). True "wipe the SLAM graph" requires a `docker compose restart slam`. Consider a back-end API endpoint `/api/slam/reset` that does the container restart, wired to the Eraser button for a real reset. This is v1 polish, not urgent.
+
+## Closed (shipped in Phase 4, quicks, or phase-3 follow-ups)
+
+- [x] Item 1 — deeper zoom, 15 m fit, viridis floor remap (quick 260415-9ww)
+- [x] `slam_toolbox` containerized, `/map` live (Phase 4 Plan 04-01)
+- [x] `<MapBitmap>` renders OccupancyGrid under scan (Phase 4 Plan 04-02)
+- [x] Persistent across `/scan` dropouts (Phase 4)
+- [x] Eraser reset control (Phase 4, client-side)
+- [x] Zoom/pan reuses standalone UX (Phase 4)
+- [x] Robot marker + scale bar + `N.N×` readout + heading tick (post-Phase 4 UX polish)
+- [x] `/map` (Leaflet) overlays hidden so LIDAR badge + viridis legend don't collide with GPS status / zone controls (commit 39b6707)
 
 ## References
 
-- `web/components/lidar/scan-canvas.tsx` — current zoom clamp
-- `web/components/map/scan-overlay.tsx` — Leaflet-anchored mode (keep untouched)
-- `.planning/todos/pending/5v-rail-transient-measurement.md` — `/odom` firmware gate
-- `.planning/phases/03-web-visualization-scan-on-the-map-page/03-02-SUMMARY.md` — current /scan pipeline
+- `.planning/phases/04-live-mapping-slam-toolbox/` — Phase 4 artifacts
+- `web/components/lidar/scan-canvas.tsx` + `web/components/lidar/map-bitmap.tsx` — current render
+- `web/lib/store/tf-store.ts` — TF cache (used only for heading tick today)
+- `.planning/todos/pending/5v-rail-transient-measurement.md` — firmware `/odom` gate
+- `.planning/todos/pending/lidar-heading-gps-fusion.md` — SLAM pose → EKF yaw

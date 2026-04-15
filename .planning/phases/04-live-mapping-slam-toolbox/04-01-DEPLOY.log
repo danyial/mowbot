@@ -356,3 +356,136 @@ micro-ros-agent gnss imu ntrip nav rosbridge web lidar slam
 - view_frames: chain map<-odom<-base_link and base_link<-laser_frame confirmed
 - 9-service regression gate: micro-ros-agent, gnss, imu, ntrip, nav, rosbridge, web, lidar, slam ALL Up
 - map->odom rate ~10 Hz published by slam_toolbox (not static)  -> MAP-03 PASS
+
+========================================================================
+=== TASK 6 CHECKPOINT PROBES (for orchestrator human-verify) ===
+========================================================================
+
+--- SC #1 (MAP-02): /map publish rate over 60 s ---
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00023s window: 19
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00023s window: 20
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00023s window: 21
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00024s window: 22
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00024s window: 23
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00025s window: 24
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00025s window: 25
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00025s window: 26
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00025s window: 27
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00025s window: 28
+
+--- SC #2 (MAP-03): TF tree links ---
+* map -> odom:
+At time 1776236631.817985273
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 1776236632.817986018
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+
+* odom -> base_link:
+At time 1776236638.183083413
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.996, -0.090]
+- Rotation: in RPY (radian) [0.000, -0.000, -2.962]
+- Rotation: in RPY (degree) [0.000, -0.000, -169.710]
+- Matrix:
+ -0.984  0.179  0.000  0.000
+ -0.179 -0.984  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+
+* base_link -> laser_frame:
+At time 0.0
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+
+--- SC #4 (MAP-05): stationary 60 s no-drift probe ---
+(Robot is stationary — orchestrator should confirm this assumption before approval.)
+TO_START_SLEEP
+--- SIZE t0 t60 ---
+ 153 /tmp/map_t0.txt
+ 153 /tmp/map_t60.txt
+ 306 total
+--- HEADER DIFF head -200 ---
+--- FULL BODY DIFF LINE COUNT ---
+0
+--- INFO BLOCK t0 ---
+header:
+  stamp:
+    sec: 1776236622
+    nanosec: 517994044
+  frame_id: map
+info:
+  map_load_time:
+    sec: 0
+    nanosec: 0
+  resolution: 0.05000000074505806
+  width: 138
+  height: 74
+  origin:
+    position:
+      x: -1.3827428714494963
+      y: -3.158224823224341
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+--- INFO BLOCK t60 ---
+header:
+  stamp:
+    sec: 1776236622
+    nanosec: 517994044
+  frame_id: map
+info:
+  map_load_time:
+    sec: 0
+    nanosec: 0
+  resolution: 0.05000000074505806
+  width: 138
+  height: 74
+  origin:
+    position:
+      x: -1.3827428714494963
+      y: -3.158224823224341
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+
+========================================================================
+=== TASK 7 (Plan-B fallback): Plan-B skipped ===
+========================================================================
+Resume signal from Task 6 was "approved" — stationary 60 s diff returned 0 lines
+(SC#4 PASS with no drift). EKF publish_tf:false / static odom->base_link fallback
+is NOT required. No edits to config/ekf.yaml or config/mower_nav_launch.py.

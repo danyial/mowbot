@@ -131,6 +131,117 @@ app.prepare().then(() => {
           }
         });
       });
+    } else if (pathname.startsWith("/logs/stream/")) {
+      // Phase 6 — per-container live log stream.
+      // Path: /logs/stream/<id>?since=<preset>&tail=<int>
+      //
+      // Security / correctness boundaries:
+      //   - id must be in the current listContainers() allowlist (T-06-04)
+      //   - since must be in the preset allowlist (T-06-04)
+      //   - tail clamped to [0, 5000]
+      //   - Non-TTY containers are demuxed via container.modem (T-06-03)
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const id = pathname.slice("/logs/stream/".length);
+      const since = url.searchParams.get("since") || "";
+      const tailRaw = parseInt(url.searchParams.get("tail") || "200", 10);
+      const tail = Math.max(0, Math.min(Number.isFinite(tailRaw) ? tailRaw : 200, 5000));
+
+      const ALLOWED_PRESETS = new Set(["", "1m", "5m", "15m", "1h", "6h", "24h"]);
+      if (!ALLOWED_PRESETS.has(since)) {
+        socket.destroy();
+        return;
+      }
+
+      const wss = new WebSocketServer({ noServer: true });
+      wss.handleUpgrade(req, socket, head, async (clientWs) => {
+        console.log("[logs-stream] Client connected to", id);
+        let raw;
+        let stdoutPT;
+        let stderrPT;
+
+        try {
+          const { listContainers, getContainer } = await import("./lib/server/docker-adapter.mjs");
+          const { parseSincePreset } = await import("./lib/server/since-preset.mjs");
+
+          // id allowlist: must be present in the current compose project
+          const known = await listContainers();
+          if (!known.some((c) => c.id === id || id.startsWith(c.id) || c.id.startsWith(id.slice(0, 12)))) {
+            console.error("[logs-stream] unknown container:", id);
+            clientWs.close(1008, "unknown container");
+            return;
+          }
+
+          const container = getContainer(id);
+          const info = await container.inspect();
+
+          const opts = {
+            follow: true,
+            stdout: true,
+            stderr: true,
+            tail,
+            timestamps: true,
+            ...(since ? { since: parseSincePreset(since) } : {}),
+          };
+          raw = await container.logs(opts);
+
+          const { PassThrough } = await import("node:stream");
+          stdoutPT = new PassThrough();
+          stderrPT = new PassThrough();
+
+          const emit = (streamName) => {
+            let buf = "";
+            return (chunk) => {
+              buf += chunk.toString("utf8");
+              let nl;
+              while ((nl = buf.indexOf("\n")) >= 0) {
+                const lineRaw = buf.slice(0, nl);
+                buf = buf.slice(nl + 1);
+                // Docker timestamp prefix: "<RFC3339> <line>"
+                const sp = lineRaw.indexOf(" ");
+                const tsStr = sp > 0 ? lineRaw.slice(0, sp) : "";
+                const line = sp > 0 ? lineRaw.slice(sp + 1) : lineRaw;
+                const parsed = tsStr ? Date.parse(tsStr) : NaN;
+                const ts = Number.isFinite(parsed) ? parsed : Date.now();
+                if (clientWs.readyState === clientWs.OPEN) {
+                  clientWs.send(JSON.stringify({ ts, stream: streamName, line }));
+                }
+              }
+            };
+          };
+          stdoutPT.on("data", emit("stdout"));
+          stderrPT.on("data", emit("stderr"));
+
+          if (info && info.Config && info.Config.Tty === false) {
+            // Non-TTY container (every ROS2 container here) — strip Docker's
+            // 8-byte stream-header framing before forwarding.
+            container.modem.demuxStream(raw, stdoutPT, stderrPT);
+          } else {
+            raw.pipe(stdoutPT);
+          }
+
+          raw.on("error", (e) => {
+            console.error("[logs-stream] upstream error:", e && e.message);
+            if (clientWs.readyState === clientWs.OPEN) clientWs.close(1011);
+          });
+          raw.on("end", () => {
+            if (clientWs.readyState === clientWs.OPEN) clientWs.close(1000);
+          });
+        } catch (err) {
+          console.error("[logs-stream] setup error:", err && err.message);
+          if (clientWs.readyState === clientWs.OPEN) clientWs.close(1011);
+        }
+
+        clientWs.on("close", () => {
+          console.log("[logs-stream] Client disconnected from", id);
+          try { raw && raw.destroy && raw.destroy(); } catch {}
+          try { stdoutPT && stdoutPT.destroy(); } catch {}
+          try { stderrPT && stderrPT.destroy(); } catch {}
+        });
+
+        clientWs.on("error", (err) => {
+          console.error("[logs-stream] client WS error:", err && err.message);
+        });
+      });
     } else {
       // Let Next.js handle HMR WebSocket upgrades
       const upgradeHandler = app.getUpgradeHandler();

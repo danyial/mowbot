@@ -163,15 +163,21 @@ app.prepare().then(() => {
           const { listContainers, getContainer } = await import("./lib/server/docker-adapter.mjs");
           const { parseSincePreset } = await import("./lib/server/since-preset.mjs");
 
-          // id allowlist: must be present in the current compose project
+          // allowlist: id OR name must be present in the current compose project
           const known = await listContainers();
-          if (!known.some((c) => c.id === id || id.startsWith(c.id) || c.id.startsWith(id.slice(0, 12)))) {
+          const match = known.find((c) =>
+            c.id === id ||
+            c.name === id ||
+            id.startsWith(c.id) ||
+            c.id.startsWith(id.slice(0, 12))
+          );
+          if (!match) {
             console.error("[logs-stream] unknown container:", id);
             clientWs.close(1008, "unknown container");
             return;
           }
 
-          const container = getContainer(id);
+          const container = getContainer(match.id);
           const info = await container.inspect();
 
           const opts = {

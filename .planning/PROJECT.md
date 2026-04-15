@@ -1,5 +1,14 @@
 # MowerBot
 
+## Current Milestone: v2.2 Ops & Fusion Polish
+
+**Goal:** Close the observability + localization gaps left open after v2.1 — make the running system legible to the operator and make the SLAM map trustworthy under motion.
+
+**Target features:**
+- WebUI container-logs view — sidecar agent (Node + dockerode, `docker.sock` read-only) behind a `server.mjs` WebSocket proxy analogous to `/rosbridge`; new `/logs` route with container list + live viewer
+- SLAM pose → EKF yaw fusion — feed `slam_toolbox` scan-matched pose into `robot_localization` as a yaw source, replacing IMU-only yaw that drifts at rest
+- `/lidar` residuals + persistence + honest reset — subtract `map→base_link` translation in `<MapBitmap>` so grid scrolls under the robot; localStorage persistence for the occupancy grid; server-side honest-reset endpoint wired to Eraser
+
 ## What This Is
 
 MowerBot is a DIY autonomous robotic lawn mower built on a distributed robotics architecture: a Raspberry Pi 4 running ROS2 Humble (dockerized), an ESP32-C3 micro-ROS motor controller on a custom Pi HAT, an RTK-capable GNSS + IMU sensor stack, an LD19 2D LiDAR on a dedicated UART, live SLAM mapping via `slam_toolbox`, and a Next.js 16 web dashboard for monitoring, teleop, mission planning, and live scan + occupancy-grid visualization on `/map` and `/lidar`.
@@ -108,4 +117,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after v2.1 LD19 LiDAR Integration milestone*
+*Last updated: 2026-04-15 — v2.2 Ops & Fusion Polish milestone started*

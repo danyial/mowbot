@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: LD19 LiDAR Integration
-status: completed
-last_updated: "2026-04-15T16:00:00Z"
+milestone: v2.2
+milestone_name: Ops & Fusion Polish
+status: defining_requirements
+last_updated: "2026-04-15T16:30:00Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State: MowerBot
 
-**Last updated:** 2026-04-15 (v2.1 shipped — preparing v2.2)
+**Last updated:** 2026-04-15 (v2.2 started — defining requirements)
 
 ## Project Reference
 
@@ -26,7 +26,10 @@ See: `.planning/PROJECT.md` (updated 2026-04-15)
 
 ## Current Position
 
-No active phase. Milestone v2.1 archived under `.planning/milestones/v2.1-*`. Awaiting `/gsd-new-milestone` to define v2.2.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-15 — Milestone v2.2 Ops & Fusion Polish started
 
 ## Next Milestone — v2.2 Ops & Fusion Polish (planned)
 
@@ -65,4 +68,4 @@ v2.1 archived. To start v2.2: `/gsd-new-milestone` (questioning → research →
 
 ---
 *State initialized: 2026-04-14 after roadmap creation*
-*Last transition: 2026-04-15 — v2.1 shipped → v2.2 planning*
+*Last transition: 2026-04-15 — v2.2 started, defining requirements*

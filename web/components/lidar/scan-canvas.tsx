@@ -17,9 +17,6 @@ import { sampleViridis } from "@/lib/viridis";
 const RANGE_MIN_FALLBACK_M = 0.0;
 const RANGE_MAX_FALLBACK_M = 8.0;
 
-// Per-point draw size (CSS pixels).
-const POINT_SIZE_PX = 3;
-
 // Stale threshold: 1500 ms ≈ 15 missed scans at 10 Hz.
 const STALE_THRESHOLD_MS = 1500;
 
@@ -31,11 +28,32 @@ const STALE_POLL_MS = 200;
 // with a small margin. Matches the spec in the quick brief.
 const STANDALONE_FIT_FACTOR = 0.45;
 
+// Standalone-only: LD19's physical returns cluster under ~12 m but the driver
+// occasionally reports a bit beyond that. Fit + colorize to 15 m so those
+// fringe returns still land on the viridis gradient instead of clamping to
+// the max color. Quick 260415-9ww (revised after visual test).
+const EFFECTIVE_RANGE_M = 15.0;
+
+// Standalone-only viridis floor: the LUT's index-0 color is RGB(68, 1, 84) —
+// near-invisible on the /lidar page's black background. Remap normalized
+// distance t ∈ [0, 1] into [VIRIDIS_FLOOR, 1] so near-range points render as
+// a clearly visible violet/blue instead of near-black. Anchored mode (on the
+// light OSM tile background in /map) still uses the full LUT via viridis.ts.
+// Quick 260415-9ww (revised).
+const VIRIDIS_FLOOR_STANDALONE = 0.18;
+
 // Standalone zoom/pan clamps. Zoom is a multiplier on the fit-pxPerMeter so
-// 1.0 == "fits range_max"; 0.25..8 gives ~5 octaves of navigation.
+// 1.0 == "fits EFFECTIVE_RANGE_M"; 0.25..64 gives ~8 octaves of navigation —
+// at 64× on a 15 m fit that's roughly ~6 cm per screen-pixel, a sensible
+// floor given LD19's ~1 cm noise. Quick 260415-9ww.
 const ZOOM_MIN = 0.25;
-const ZOOM_MAX = 8.0;
-const WHEEL_ZOOM_STEP = 1.0015; // per deltaY unit; ~1.1x per notch on most wheels
+const ZOOM_MAX = 64.0;
+
+// Wheel sensitivity coefficient for the exponential zoom curve:
+//   zoom *= exp(-deltaY * WHEEL_ZOOM_K)
+// Feels uniform across mouse-wheel notches (deltaY≈100) and trackpad
+// continuous scroll (deltaY≈3). Quick 260415-9ww.
+const WHEEL_ZOOM_K = 0.0015;
 
 interface ScanCartesian {
   // Flat [x0, y0, r0, x1, y1, r1, ...] in robot frame (meters).
@@ -210,8 +228,15 @@ export function ScanCanvas({
       if (bctx) {
         const img = bctx.createImageData(100, 8);
         const tmp = new Uint8ClampedArray(3);
+        // Standalone legend mirrors the draw-loop floor remap so the gradient
+        // shown in the legend matches what's actually painted on the canvas.
+        // Quick 260415-9ww (revised).
         for (let x = 0; x < 100; x++) {
-          sampleViridis(x / 99, tmp, 0);
+          const t = x / 99;
+          const lutT = standalone
+            ? VIRIDIS_FLOOR_STANDALONE + t * (1 - VIRIDIS_FLOOR_STANDALONE)
+            : t;
+          sampleViridis(lutT, tmp, 0);
           for (let y = 0; y < 8; y++) {
             const o = (y * 100 + x) * 4;
             img.data[o] = tmp[0];
@@ -287,13 +312,17 @@ export function ScanCanvas({
         const py = e.clientY - rect.top;
         const w = canvas.width;
         const h = canvas.height;
-        const rmax = cartesianRefForHandlers.current?.rmax || RANGE_MAX_FALLBACK_M;
+        // Fit to the EFFECTIVE_RANGE_M floor (LD19's physical 12 m), not the
+        // driver-reported range_max which can be 25 m and shrinks everything.
+        const rawMax = cartesianRefForHandlers.current?.rmax || RANGE_MAX_FALLBACK_M;
+        const effMax = Math.min(EFFECTIVE_RANGE_M, rawMax || EFFECTIVE_RANGE_M);
         const fit = Math.min(w, h) * STANDALONE_FIT_FACTOR;
-        const base = fit / (rmax || 1);
+        const base = fit / (effMax || 1);
 
         const v = viewRef.current;
         const worldBefore = canvasToWorld(px, py, base);
-        const factor = Math.pow(WHEEL_ZOOM_STEP, -e.deltaY);
+        // Exponential curve — uniform feel across mouse notches & trackpad.
+        const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_K);
         const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.zoom * factor));
         if (nextZoom === v.zoom) return;
 
@@ -415,15 +444,19 @@ export function ScanCanvas({
     }
   }, [isStale]);
 
-  // ── Keep legend's "hi" label in sync with the current scan's range_max ───
+  // ── Keep legend's "hi" label in sync with the effective range ────────────
+  // In standalone mode we clamp to EFFECTIVE_RANGE_M (12 m physical LD19 max)
+  // to match the fit scale. Anchored mode keeps the driver's range_max since
+  // its legend is informational only and shouldn't change /map behavior.
   useEffect(() => {
     const hi = legendHiRef.current;
     if (!hi) return;
-    const rmax =
+    const rmaxRaw =
       latest && latest.range_max > 0 ? latest.range_max : RANGE_MAX_FALLBACK_M;
-    // Show at most one decimal; the LD19 typically reports 12.0.
+    const rmax = standalone ? Math.min(EFFECTIVE_RANGE_M, rmaxRaw) : rmaxRaw;
+    // Show at most one decimal; LD19 effective is 12.0.
     hi.textContent = `${rmax % 1 === 0 ? rmax.toFixed(0) : rmax.toFixed(1)} m`;
-  }, [latest]);
+  }, [latest, standalone]);
 
   // ── Redraw on scan memo, projector, or view-transform change ─────────────
   useEffect(() => {
@@ -450,7 +483,8 @@ export function ScanCanvas({
         canvasRef.current,
         cartesian,
         projector,
-        standalone ? viewRef.current : IDENTITY_VIEW
+        standalone ? viewRef.current : IDENTITY_VIEW,
+        standalone
       );
       rafRef.current = null;
     });
@@ -501,6 +535,28 @@ export function ScanCanvas({
         <ZoomBtn label="+" onClick={() => zoomBy(1.25)} title="Zoom in" />
         <ZoomBtn label="−" onClick={() => zoomBy(1 / 1.25)} title="Zoom out" />
         <ZoomBtn label="⌂" onClick={resetView} title="Reset view" />
+        {/* Live zoom-level readout — updates via viewTick. Quick 260415-9ww. */}
+        <div
+          style={{
+            width: 32,
+            padding: "2px 0",
+            borderRadius: 6,
+            background: "rgba(0,0,0,0.6)",
+            color: "#fff",
+            border: "1px solid rgba(255,255,255,0.2)",
+            fontSize: 11,
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            textAlign: "center",
+            lineHeight: 1.2,
+          }}
+          aria-label="current zoom level"
+          // viewTick is read via closure; include it to satisfy exhaustive-deps
+          // when React re-renders this element after bumpView().
+          data-view-tick={viewTick}
+        >
+          {viewRef.current.zoom.toFixed(1)}×
+        </div>
       </div>
     </div>
   );
@@ -551,7 +607,8 @@ function drawScan(
   canvas: HTMLCanvasElement,
   cart: ScanCartesian,
   projector: ScanProjector | undefined,
-  view: ViewTransform
+  view: ViewTransform,
+  standalone: boolean
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -574,7 +631,10 @@ function drawScan(
     const cx = w / 2 + view.panX;
     const cy = h / 2 + view.panY;
     const fit = Math.min(w, h) * STANDALONE_FIT_FACTOR;
-    const pxPerMeter = (fit / (cart.rmax || 1)) * view.zoom;
+    // Fit to LD19's physical 12 m range, not the driver-reported 25 m, so the
+    // useful sweep fills the canvas by default. Quick 260415-9ww.
+    const effMax = Math.min(EFFECTIVE_RANGE_M, cart.rmax || EFFECTIVE_RANGE_M);
+    const pxPerMeter = (fit / (effMax || 1)) * view.zoom;
     project = (xM, yM) => ({
       px: cx + xM * pxPerMeter,
       py: cy - yM * pxPerMeter,
@@ -584,6 +644,14 @@ function drawScan(
   const { xyr, count, rmin, rmax } = cart;
   const rspan = rmax - rmin || 1;
   const rgb = new Uint8ClampedArray(3);
+
+  // Per-point draw size: anchored mode keeps the original 3 px dots.
+  // Standalone scales gently with zoom and clamps to [1, 3] — so deep-zoom
+  // renders as small dots (not blobs) and default zoom renders as ~2 px dots.
+  // Quick 260415-9ww.
+  const pointSize = standalone && !projector
+    ? Math.max(1, Math.min(3, view.zoom * 0.15))
+    : 3;
 
   for (let i = 0; i < count; i++) {
     const xR = xyr[i * 3 + 0];
@@ -595,13 +663,21 @@ function drawScan(
     if (!isFinite(p.px) || !isFinite(p.py)) continue;
 
     const t = (r - rmin) / rspan;
-    sampleViridis(t, rgb, 0);
+    // Standalone-only: lift near-range points off the near-black low end of
+    // the viridis LUT so they're visible on the /lidar page's black bg.
+    // Anchored mode (/map, light OSM tiles) keeps the full gradient.
+    // Quick 260415-9ww (revised).
+    const lutT =
+      standalone && !projector
+        ? VIRIDIS_FLOOR_STANDALONE + Math.max(0, Math.min(1, t)) * (1 - VIRIDIS_FLOOR_STANDALONE)
+        : t;
+    sampleViridis(lutT, rgb, 0);
     ctx.fillStyle = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
     ctx.fillRect(
-      p.px - POINT_SIZE_PX / 2,
-      p.py - POINT_SIZE_PX / 2,
-      POINT_SIZE_PX,
-      POINT_SIZE_PX
+      p.px - pointSize / 2,
+      p.py - pointSize / 2,
+      pointSize,
+      pointSize
     );
   }
 }

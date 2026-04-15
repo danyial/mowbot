@@ -139,6 +139,28 @@ services:
     command: >
       ros2 launch /launch/lidar.launch.py
 
+  # ============================================
+  # SLAM — slam_toolbox online async mapping
+  # Consumes /scan + (odom -> base_link TF), publishes /map + (map -> odom TF)
+  # ============================================
+  slam:
+    <<: *ros-common
+    build:
+      context: ./docker/slam
+    image: ghcr.io/danyial/mowbot/slam:humble-2.6.10
+    container_name: mower-slam
+    depends_on:
+      lidar:
+        condition: service_started
+      nav:
+        condition: service_started
+      micro-ros-agent:
+        condition: service_started
+    command: >
+      ros2 launch slam_toolbox online_async_launch.py
+      slam_params_file:=/config/slam_toolbox_params.yaml
+      use_sim_time:=false
+
 volumes:
   mower-data:
     driver: local

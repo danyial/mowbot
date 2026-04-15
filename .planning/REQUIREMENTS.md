@@ -31,6 +31,14 @@ Requirements for this milestone. Each maps to a roadmap phase.
 - [ ] **VIZ-04**: Foxglove layout file committed (e.g. `web/foxglove/mowerbot.foxglove-layout.json`) so users can point Foxglove Studio at the existing rosbridge endpoint and see `/scan` + `/odom` + `/fix` out of the box
 - [ ] **VIZ-05**: Scan points are colored by distance (near = warm / far = cool) in the polar overlay as a readability enhancement
 
+### Live Mapping (Phase 4)
+
+- [ ] **MAP-01**: `slam` Docker service starts cleanly via `docker compose up slam`; image pinned (not `latest`); inherits `*ros-common` (`network_mode/ipc/pid: host`, CycloneDDS env, /config mount)
+- [ ] **MAP-02**: `ros2 topic hz /map` reports >= 0.5 Hz under indoor scan for 60 s; `ros2 topic echo /map --once` returns a populated `nav_msgs/OccupancyGrid`
+- [ ] **MAP-03**: TF tree contains `map -> odom -> base_link -> laser_frame` without warnings; `map -> odom` published by slam_toolbox (not static); verified via `ros2 run tf2_tools view_frames`
+- [ ] **MAP-04**: `/lidar` page renders the occupancy grid bitmap under the live polar scan within 5 s of opening; map persists after `/scan` stops; "Reset Map" button clears it via `/slam_toolbox/reset` service
+- [ ] **MAP-05**: With the robot physically stationary for 60 s indoors, the map does NOT drift; reference wall stays within ±5 cm in the bitmap
+
 ### GSD Initialization
 
 - [ ] **META-01**: Existing MowerBot codebase formally adopted as the GSD brownfield baseline — PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md, config.json all present and committed, codebase map preserved under `.planning/codebase/`
@@ -95,10 +103,15 @@ Populated during roadmap creation.
 | VIZ-03 | Phase 3 | Pending |
 | VIZ-04 | Phase 3 | Pending |
 | VIZ-05 | Phase 3 | Pending |
+| MAP-01 | Phase 4 | Pending |
+| MAP-02 | Phase 4 | Pending |
+| MAP-03 | Phase 4 | Pending |
+| MAP-04 | Phase 4 | Pending |
+| MAP-05 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 16 total
-- Mapped to phases: 16
+- v1 requirements: 21 total
+- Mapped to phases: 21
 - Unmapped: 0 ✓
 
 ---

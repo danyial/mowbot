@@ -44,7 +44,7 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
 
 **Plans**: 3 plans
 - [x] 06-01-PLAN.md — Wave 0 test scaffolding + deps (dockerode, ansi-to-html)
-- [ ] 06-02-PLAN.md — Backend: docker-adapter, /api/logs/containers, server.mjs /logs/stream branch, docker.sock:ro mount
+- [x] 06-02-PLAN.md — Backend: docker-adapter, /api/logs/containers, server.mjs /logs/stream branch, docker.sock:ro mount
 - [ ] 06-03-PLAN.md — Frontend: /logs route, LogViewer, ContainerList, preset chips, nav integration, human-verify
 **UI hint**: yes
 

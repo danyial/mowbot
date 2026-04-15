@@ -131,9 +131,16 @@ services:
       - NEXT_PUBLIC_ROSBRIDGE_URL=/rosbridge
       - ROSBRIDGE_URL=ws://localhost:9090
       - NTRIP_ENV_PATH=/app/config/ntrip.env
+      # Phase 6 — guarantees label filter match regardless of compose
+      # invocation cwd; docker-adapter reads this to build the
+      # com.docker.compose.project=<name> filter.
+      - COMPOSE_PROJECT_NAME=mowerbot
     volumes:
       - ./config:/app/config
       - mower-data:/app/data
+      # Phase 6 LOGS-01..04 — read-only docker.sock for the logs sidecar.
+      # :ro + method allowlist in web/lib/server/docker-adapter.mjs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - rosbridge
 

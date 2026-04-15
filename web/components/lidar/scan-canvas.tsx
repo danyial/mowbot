@@ -6,7 +6,6 @@ import { Eraser } from "lucide-react";
 import { useScanStore } from "@/lib/store/scan-store";
 import { useMapStore } from "@/lib/store/map-store";
 import { useImuStore } from "@/lib/store/imu-store";
-import { useTfStore } from "@/lib/store/tf-store";
 import { callSlamReset } from "@/lib/ros/services";
 import { sampleViridis } from "@/lib/viridis";
 
@@ -197,44 +196,10 @@ export function ScanCanvas({
   // Store selectors.
   const latest = useScanStore((s) => s.latest);
   const isStale = useScanStore((s) => s.isStale);
-  // Standalone-only: IMU yaw (deg) is the FALLBACK heading source for the
-  // robot marker tick + scan rotation when TF is missing or stale. Primary
-  // source is the TF store's composed map→base_link yaw (radians).
-  // Quick 260415-tf-align.
+  // Standalone-only: IMU yaw (deg). Currently unused — the heading tick is
+  // pinned straight up and scan is drawn in raw laser_frame (see drawScan).
+  // Kept subscribed so the store stays warm for future re-enable.
   const yawDeg = useImuStore((s) => s.yaw);
-  // Subscribe to the TF tick so we recompute the composed yaw on every /tf
-  // burst; the selector pulls the actual composed value via mapToBaseLinkYaw().
-  const tfTick = useTfStore((s) => s.tick);
-  // Composed map→base_link yaw (radians), or null when TF is unavailable or
-  // stale. In that case we fall back to IMU yaw (see scanYawRad below).
-  const mapToBaseYaw = useMemo(() => {
-    // Tick is in the dep list so this recomputes when TF updates.
-    void tfTick;
-    return useTfStore.getState().mapToBaseLinkYaw();
-  }, [tfTick]);
-  // Effective yaw used for BOTH scan rotation and the robot heading tick in
-  // standalone mode. TF when available, IMU yaw otherwise. Anchored (/map)
-  // mode passes the scan through the supplied projector and never applies
-  // this — anchored rendering is unchanged.
-  const scanYawRad = useMemo(() => {
-    if (mapToBaseYaw !== null) return mapToBaseYaw;
-    // Fallback: IMU yaw (degrees → radians).
-    return (yawDeg * Math.PI) / 180;
-  }, [mapToBaseYaw, yawDeg]);
-  // One-shot warning when TF drops out — useful for field diagnostics without
-  // spamming the console each frame.
-  const tfWarnedRef = useRef(false);
-  useEffect(() => {
-    if (mapToBaseYaw === null && !tfWarnedRef.current) {
-      tfWarnedRef.current = true;
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[lidar] TF map→base_link unavailable or stale — falling back to IMU yaw for scan alignment"
-      );
-    } else if (mapToBaseYaw !== null && tfWarnedRef.current) {
-      tfWarnedRef.current = false;
-    }
-  }, [mapToBaseYaw]);
 
   // ── Memoized polar→cartesian (NaN-safe, preserves typed-array semantics) ──
   const cartesian = useMemo<ScanCartesian | null>(() => {
@@ -569,12 +534,11 @@ export function ScanCanvas({
         projector,
         standalone ? viewRef.current : IDENTITY_VIEW_ANCHORED,
         standalone,
-        yawDeg,
-        scanYawRad
+        yawDeg
       );
       rafRef.current = null;
     });
-  }, [cartesian, projector, standalone, viewTick, yawDeg, scanYawRad]);
+  }, [cartesian, projector, standalone, viewTick, yawDeg]);
 
   // Zoom-control handlers (standalone only).
   const zoomBy = (factor: number) => {
@@ -859,14 +823,9 @@ function drawScan(
   projector: ScanProjector | undefined,
   view: ViewTransform,
   standalone: boolean,
-  yawDeg: number,
-  // Standalone-only: yaw (radians) used to rotate scan points from laser
-  // frame into the slam_toolbox map frame. Primary: TF map→base_link.
-  // Fallback: IMU yaw. Anchored mode ignores this — the caller-supplied
-  // projector handles the transform through Leaflet. Quick 260415-tf-align.
-  scanYawRad: number
+  yawDeg: number
 ) {
-  void yawDeg; // superseded by scanYawRad for heading tick + scan rotation
+  void yawDeg; // heading tick pinned straight up — see revert in drawScan body
   // willReadFrequently: Playwright/probe-friendly, also cheap when we don't
   // actually read back. Quick 260414-restore.
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -928,7 +887,6 @@ function drawScan(
   // spin around a stationary robot. V0 UX: "you're looking through the
   // robot's eyes — the world turns around you." Anchored (/map) mode's
   // projector handles its own transform and is unaffected.
-  void scanYawRad; // kept in the signature for future re-enable; unused here
 
   for (let i = 0; i < count; i++) {
     const xR = xyr[i * 3 + 0];
@@ -984,8 +942,7 @@ function drawScan(
     // +x of laser_frame which with canvas +x-right rendering maps to
     // screen-right. We point the tick straight up instead so the user
     // gets an unambiguous "this is where the robot is facing" cue that
-    // doesn't drift with EKF/TF yaw noise. scanYawRad is intentionally
-    // unused here — TF subscription is retained for future re-enable.
+    // doesn't drift with EKF/TF yaw noise.
     const tickLen = 12;
     const tx = mcx;
     const ty = mcy - tickLen;

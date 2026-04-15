@@ -10,7 +10,6 @@ import { useOdometryStore } from "@/lib/store/odometry-store";
 import { useMissionStore } from "@/lib/store/mission-store";
 import { useScanStore } from "@/lib/store/scan-store";
 import { useMapStore } from "@/lib/store/map-store";
-import { useTfStore, type TFMessage } from "@/lib/store/tf-store";
 import type {
   NavSatFix,
   ImuMessage,
@@ -80,14 +79,6 @@ function setupSubscriptions() {
     }),
     subscribe<OccupancyGrid>("MAP", (msg) => {
       useMapStore.getState().updateMap(msg);
-    }),
-    // /tf + /tf_static — cached by useTfStore for map→base_link yaw
-    // composition used by the /lidar scan overlay. Quick 260415-tf-align.
-    subscribe<TFMessage>("TF", (msg) => {
-      useTfStore.getState().applyTf(msg);
-    }),
-    subscribe<TFMessage>("TF_STATIC", (msg) => {
-      useTfStore.getState().applyTf(msg);
     }),
     subscribe<StringMsg>("MOWER_STATUS", (msg) => {
       try {

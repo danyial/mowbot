@@ -691,6 +691,84 @@ export function ScanCanvas({
         <Eraser size={16} />
       </button>
 
+      {/* Scale bar — bottom-center, zoom-aware physical ruler (260414-fix2).
+          The viridis legend is a color-mapping legend, NOT a physical ruler:
+          it shows what the gradient maps to in meters but its bar length
+          doesn't scale with zoom. This element renders a thin white segment
+          whose on-screen pixel width corresponds to a "nice" metric distance
+          (0.1/0.2/0.5/1/2/5/10 m) at the current zoom. The target pixel
+          width (~90 px) is picked so one nice value always lands in the
+          60–120 px readable range, regardless of how far in/out the user
+          has zoomed. */}
+      {currentTransform ? (() => {
+        const pxPerMeter = currentTransform.pxPerMeter;
+        const niceSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10];
+        const target = 90;
+        // Pick the nice-value whose on-screen width is closest to `target`.
+        let best = niceSteps[0];
+        let bestDiff = Math.abs(niceSteps[0] * pxPerMeter - target);
+        for (const s of niceSteps) {
+          const d = Math.abs(s * pxPerMeter - target);
+          if (d < bestDiff) {
+            bestDiff = d;
+            best = s;
+          }
+        }
+        const barPx = best * pxPerMeter;
+        const label = best < 1 ? `${Math.round(best * 100)} cm` : `${best} m`;
+        return (
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: 12,
+              transform: "translateX(-50%)",
+              zIndex: 500,
+              pointerEvents: "none",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              fontSize: 11,
+              color: "#fff",
+              textShadow: "0 0 2px rgba(0,0,0,0.8)",
+            }}
+            aria-label={`scale bar ${label}`}
+            data-view-tick={viewTick}
+          >
+            <span>{label}</span>
+            <svg
+              width={Math.max(2, barPx)}
+              height={8}
+              style={{ display: "block", overflow: "visible" }}
+            >
+              {/* horizontal line */}
+              <line
+                x1={0}
+                y1={4}
+                x2={barPx}
+                y2={4}
+                stroke="#fff"
+                strokeWidth={2}
+              />
+              {/* left tick */}
+              <line x1={0} y1={0} x2={0} y2={8} stroke="#fff" strokeWidth={2} />
+              {/* right tick */}
+              <line
+                x1={barPx}
+                y1={0}
+                x2={barPx}
+                y2={8}
+                stroke="#fff"
+                strokeWidth={2}
+              />
+            </svg>
+          </div>
+        );
+      })() : null}
+
       {/* Zoom controls — bottom-left, pointer-events enabled so they overlay
           the interactive canvas without the canvas eating the clicks. */}
       <div
@@ -841,21 +919,21 @@ function drawScan(
   // Quick 260414-restore.
   const drawOutline = standalone && !projector;
 
-  // Standalone rotation: rotate each laser-frame point by scanYawRad so the
-  // scan sits in the slam_toolbox map frame. Anchored mode: the projector
-  // does its own transform — leave points untouched. Compute sin/cos once.
-  const applyYaw = standalone && !projector;
-  const cosY = applyYaw ? Math.cos(scanYawRad) : 1;
-  const sinY = applyYaw ? Math.sin(scanYawRad) : 0;
+  // Standalone: scan is drawn in RAW laser_frame coords, fixed relative to
+  // the robot (regression fix 260414-fix2 — reverts the TF-yaw rotation from
+  // commit 12dd12c). Rationale: odom→base_link yaw from EKF drifts wildly
+  // when the mower is stationary (covariance ~2.6e10) because slam_toolbox's
+  // minimum_travel_distance / heading thresholds never fire, so map→odom
+  // never compensates. Rotating the scan by that drift made points visibly
+  // spin around a stationary robot. V0 UX: "you're looking through the
+  // robot's eyes — the world turns around you." Anchored (/map) mode's
+  // projector handles its own transform and is unaffected.
+  void scanYawRad; // kept in the signature for future re-enable; unused here
 
   for (let i = 0; i < count; i++) {
-    const xR0 = xyr[i * 3 + 0];
-    const yR0 = xyr[i * 3 + 1];
+    const xR = xyr[i * 3 + 0];
+    const yR = xyr[i * 3 + 1];
     const r = xyr[i * 3 + 2];
-
-    // 2D rotation by scanYawRad (CCW, standard ROS convention).
-    const xR = applyYaw ? xR0 * cosY - yR0 * sinY : xR0;
-    const yR = applyYaw ? xR0 * sinY + yR0 * cosY : yR0;
 
     const p = project(xR, yR);
     if (!p) continue;
@@ -901,15 +979,16 @@ function drawScan(
     const mcx = w / 2 + view.panX;
     const mcy = h / 2 + view.panY;
 
-    // Heading tick. ROS yaw is CCW-positive in the x-forward/y-left body
-    // frame; canvas +y is south, so we negate sin to flip the screen y-axis.
-    // Uses scanYawRad (TF map→base_link, or IMU fallback) so the marker
-    // points the way slam_toolbox thinks the robot is facing — consistent
-    // with the scan's rotation. Quick 260415-tf-align.
-    const yawRad = scanYawRad;
+    // Heading tick — fixed "forward = up" (260414-fix2). Scan is drawn in
+    // raw laser_frame coords (see drawScan rotation revert), so forward is
+    // +x of laser_frame which with canvas +x-right rendering maps to
+    // screen-right. We point the tick straight up instead so the user
+    // gets an unambiguous "this is where the robot is facing" cue that
+    // doesn't drift with EKF/TF yaw noise. scanYawRad is intentionally
+    // unused here — TF subscription is retained for future re-enable.
     const tickLen = 12;
-    const tx = mcx + Math.cos(yawRad) * tickLen;
-    const ty = mcy - Math.sin(yawRad) * tickLen;
+    const tx = mcx;
+    const ty = mcy - tickLen;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
     ctx.lineWidth = 2;
     ctx.beginPath();

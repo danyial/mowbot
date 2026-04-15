@@ -1,175 +1,182 @@
-# Stack Research — LD19 LiDAR Integration
+# Stack Research — MowerBot v2.2 Ops & Fusion Polish
 
-**Domain:** 2D LiDAR integration into existing ROS2 Humble + Pi 4 + Next.js robotic lawn mower
-**Researched:** 2026-04-14
-**Confidence:** HIGH (drivers, protocol, Pi UART) / MEDIUM (web viz — multiple valid paths)
+**Domain:** ROS2 Humble robotics + Next.js ops dashboard — additive changes only
+**Researched:** 2026-04-15
+**Confidence:** HIGH (all core claims verified against Context7 / official docs)
 
 ## Scope
 
-This research is scoped tightly to the LD19 addition. It does **not** re-recommend the existing stack (ROS2 Humble, CycloneDDS, micro-ROS, Next.js 16/React 19, roslibjs, Leaflet). Those are treated as fixed constraints. See `.planning/codebase/STACK.md` for the existing baseline.
+This milestone adds three concrete features to an **already-working** stack. The existing stack (ROS2 Humble + CycloneDDS + micro-ROS, 9 Docker services, Next.js 16 + React 19 + rosbridge + `server.mjs` proxy + Canvas 2D rendering) is **not re-researched** — this document covers only the *new* capabilities needed for:
 
-## Recommended Stack
+1. `/logs` WebUI — live container logs via Docker socket
+2. SLAM → EKF yaw fusion — `slam_toolbox` `/pose` into `robot_localization`
+3. `/lidar` residuals + persistence + honest reset — Canvas-2D transform, client storage, server endpoint
 
-### Core Technologies
+## Recommended Additions
+
+### Core Additions
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| `ldlidar_stl_ros2` (LDROBOT official) | master @ current HEAD | ROS2 driver that opens the LD19 serial port, parses the 0x54/0x2C DTOF packet stream, and publishes `sensor_msgs/LaserScan` on `/scan` | Manufacturer-maintained, explicitly lists LD19 as a supported model, handles CRC8, intensity, angle cropping, and scan-direction flip out of the box. Referenced by every recent LD19 tutorial (incl. Nov 2025 STL-19P guide). Clean CMake/colcon build that drops into the existing docker-per-node pattern. |
-| Raspberry Pi 4 `uart3` via `dtoverlay=uart3` | BCM2711 hardware PL011 | Dedicated hardware UART for LD19 @ 230400 baud on GPIO4 (TXD3) / GPIO5 (RXD3) — LD19 only needs RX from Pi's perspective (one-way sensor → host) | GPIO14/15 (`ttyAMA0`) is already burned by the ESP32 HAT link at 115200 and cannot be shared. `uart2` (GPIO0/1) conflicts with the ID_EEPROM I2C lines reserved for HAT autodetect. `uart4` (GPIO8/9) conflicts with the WS2812 status LED (GPIO8) already used by the HAT firmware. `uart5` (GPIO12/13) is free but adjacent to the BTS7960 PWM lines on the existing HAT; `uart3` on GPIO4/5 is the cleanest free pair. Hardware PL011 (not miniUART) means 230400 is rock-solid — miniUART `ttyS0` is tied to the VPU clock and drifts at non-115200 rates. |
-| `linux-serial` / udev symlink (`/dev/ttyLIDAR`) | n/a | Stable device path for the driver container to mount | Mirrors the existing `/dev/ttyESP32` and `/dev/ttyGNSS` pattern in `udev/99-mower.rules`. The `uart3` overlay exposes the port as `/dev/ttyAMA1` on Pi 4 (numbering of PL011 instances after ttyAMA0); a udev symlink decouples the compose file from kernel enumeration order. |
-| Docker service `ldlidar` (new) | ROS2 Humble base image | Containerized ROS2 node running `ldlidar_stl_ros2`, publishing `/scan` over CycloneDDS on host network | Consistent with existing `docker/gnss`, `docker/imu`, `docker/micro-ros-agent` layout: one Dockerfile per node, `network_mode: host`, device file mounted in via `devices:`, config dropped in via volume mount. No architectural novelty. |
-| `roslibjs` (already in stack) | 2.1.0 | Browser subscription to `/scan` over existing rosbridge proxy | Already in `package.json`. `sensor_msgs/LaserScan` is a plain JSON message (ranges[], intensities[], angle_min, angle_max, angle_increment) — no binary framing concerns. |
-| Custom HTML5 Canvas 2D polar renderer | — (vanilla React 19) | Draws scan points as a polar overlay on the existing Leaflet map page | LaserScan is ~450 points @ 10 Hz — trivial workload for 2D canvas. Avoids dragging in Three.js/react-three-fiber just for 2D polar dots. `ros3djs` is effectively unmaintained (last meaningful release 2019) and couples to legacy Three.js versions; not a good citizen in a React 19 + Next.js 16 app. |
+| `dockerode` | `^4.0.10` (npm, 2026-03 release) | Node client for Docker Engine API over `/var/run/docker.sock`; streams container logs with built-in multiplexed-stream demuxing (`container.modem.demuxStream`) | Dominant, actively maintained (~1.9 M weekly downloads vs 103 K for `node-docker-api`). Direct UNIX-socket support, promise + callback interfaces, `{follow:true}` returns a live Node `Readable` that slots straight into `ws.send()`. Verified via Context7 `/apocas/dockerode`. |
+| `slam_toolbox` pose publisher (already deployed in v2.1) | `humble-2.6.10` | Publishes `geometry_msgs/msg/PoseWithCovarianceStamped` on topic **`/pose`** (map → base_link pose from scan match) with tunable `yaw_covariance_scale` / `position_covariance_scale` params | Already running in the `slam` container. Verified against official docs: `/pose` is published in all modes (async, sync, localization) with a `pose_pub_` member. No new package install. |
+| `robot_localization` EKF `pose0` source | `humble` (already deployed in `nav` container) | Consume `/pose` as a yaw measurement — `pose0: /pose`, `pose0_config: [F,F,F,F,F,T, …]` (yaw-only), `pose0_differential: false`, `pose0_relative: false` | Already running. Config-only change in `config/ekf.yaml`. SLAM covariance feeds directly into Kalman gain — the principled way to replace drifting IMU-only yaw. |
+| IndexedDB (via `idb-keyval`) | `idb-keyval ^6.2.1` | Persist occupancy-grid bitmap + metadata across page reloads | `localStorage` is capped at ~5 MiB per origin and is synchronous — an OccupancyGrid at 2048×2048 int8 (4 MiB raw, ~6 MiB base64) can blow the quota. IndexedDB handles binary Blobs/Uint8Arrays natively and has GB-scale quotas. `idb-keyval` is a 600-byte wrapper; no schema ceremony for a single-key use case. |
 
 ### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `sensor_msgs` (ROS2 Humble) | bundled | `LaserScan` message type | Always — it's what the driver publishes and rosbridge serializes |
-| `tf2_ros` static_transform_publisher | bundled | Static TF from `base_link` → `laser` frame so downstream consumers (future Nav2, slam_toolbox) have a correct frame tree | Launch once per boot; can live in the same launch file as the driver |
-| Existing NaN sanitization layer (`web/server.mjs`) | in-tree | Strips NaN from JSON before it hits the browser | LD19 emits NaN / Inf for out-of-range points in LaserScan `ranges[]`; the existing sanitizer already handles this for `/fix` — it will work unchanged for `/scan` |
-| `rosbridge_suite` (already running) | Humble | WS bridge for browser | Already deployed; just add `/scan` to the topic allow-list if one is configured |
+| `ws` | `^8.18` (already in `web/`) | WebSocket server inside `server.mjs` for the `/logs` upgrade path | Same library already proxies `/rosbridge`. Reuse the same upgrade-dispatch pattern — path-based routing on `req.url`. No new dep. |
+| `xterm.js` (`@xterm/xterm`) | `^5.5` | Terminal-grade log viewer in the browser (ANSI color, reflow, copy, search) | Optional polish. Most ROS2 container logs are colorized (ros2 logging uses ANSI). Plain `<pre>` works for MVP; upgrade to xterm if ANSI rendering is requested. |
+| `@xterm/addon-fit` + `@xterm/addon-search` | `^0.10` / `^0.15` | Terminal sizing + search-in-buffer | Only if xterm is adopted. |
+| `idb-keyval` | `^6.2.1` | Tiny IndexedDB wrapper — `get`/`set`/`del` | Avoid hand-rolling `indexedDB.open`. One dep, zero schema work. |
 
-### Development Tools
+### Tooling / Infra Changes
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `picocom` / `minicom` @ 230400 8N1 | Bench-test the LD19 packet stream before wiring up ROS2 | `picocom -b 230400 /dev/ttyAMA1` — expect binary garbage; confirms electrical + permissions |
-| `ros2 topic hz /scan` | Verify scan rate (~10 Hz nominal for LD19) | First thing to run after the driver container starts |
-| `rviz2` (optional, X-forwarded or on dev laptop) | Sanity-check the scan visually before wiring web viz | Not required for the milestone, but saves a round trip if web rendering looks wrong |
-
-## Pi 4 UART Wiring — Prescriptive
-
-**Enable in `/boot/firmware/config.txt` (Ubuntu 22.04) or `/boot/config.txt` (Raspberry Pi OS):**
-
-```ini
-enable_uart=1          # already set for ttyAMA0
-dtoverlay=uart3        # adds /dev/ttyAMA1 on GPIO4(TX)/GPIO5(RX)
-```
-
-**Wiring to LD19 (LD19 has only 4 wires — VCC 5V, GND, TX, RX pin present but unused):**
-
-| LD19 pin | Pi 4 pin (physical / BCM) |
-|----------|---------------------------|
-| VCC (5V) | Pin 4 (5V rail) or HAT-regulated 5V |
-| GND | Pin 6 or any GND |
-| TX (data out) | Pin 7 / GPIO4 — Pi's RXD3 |
-| RX (unused) | leave unconnected |
-
-LD19 is **one-way**: it starts streaming the moment power is applied, no host commands. Pi's TXD3 is not needed.
-
-**HAT revision note:** GPIO4/5 pass through the 40-pin stacking header, so the existing v2.0 HAT does not strictly need a respin — a wire pigtail or a small daughter connector on the pass-through header is sufficient for this milestone. A cleaner HAT v2.1 with a dedicated LD19 JST-GH footprint is a follow-up, not a blocker.
+| Change | Purpose | Notes |
+|--------|---------|-------|
+| `docker-compose.yml` — `web` service | Mount `/var/run/docker.sock:/var/run/docker.sock:ro` | **Read-only bind**. Docker daemon does not enforce read-only semantics on the API — `ro` on the bind mount only blocks `write(2)` on the socket inode, which Docker doesn't use. True read-only requires an auth proxy (see "What NOT to Use" below) or accepting the trust boundary. For a single-user home-network mower behind the existing trusted-LAN assumption, the bind-mount is acceptable. |
+| `server.mjs` | Add second WebSocket upgrade handler for `/logs?container=<id>` | Mirror of existing `/rosbridge` path. Validate `container` against dockerode's `listContainers()` allow-list before opening the log stream. |
+| `config/ekf.yaml` | Add `pose0`, `pose0_config`, `pose0_differential`, `pose0_rejection_threshold` | No package bump. Restart `nav` container. |
+| `slam_toolbox` params | Tune `yaw_covariance_scale` (e.g. 1.0 → 0.5 to trust yaw more; 2.0 to trust less) and `position_covariance_scale` (high value to neuter x/y contribution — we keep GPS as absolute position) | Config-only. Kept separate from `pose0_config` masking so both tuning knobs are discoverable. |
 
 ## Installation
 
-**ROS2 driver (new docker/ldlidar/Dockerfile):**
-
 ```bash
-# Inside container build
-git clone https://github.com/ldrobotSensorTeam/ldlidar_stl_ros2.git \
-  /ros2_ws/src/ldlidar_stl_ros2
-cd /ros2_ws && colcon build --packages-select ldlidar_stl_ros2
+# web/ — add to package.json dependencies
+cd web
+npm install dockerode@^4.0.10 idb-keyval@^6.2.1
+# Optional terminal viewer (defer until MVP lands):
+# npm install @xterm/xterm@^5.5 @xterm/addon-fit@^0.10 @xterm/addon-search@^0.15
+
+# No pip / rosdep installs — robot_localization and slam_toolbox are already in the stack.
 ```
 
-**Launch parameters (LD19-specific):**
+`docker-compose.yml` additions for the `web` service:
 
 ```yaml
-product_name: 'LDLiDAR_LD19'
-topic_name: '/scan'
-frame_id: 'laser'
-port_name: '/dev/ttyLIDAR'   # udev symlink → /dev/ttyAMA1
-port_baudrate: 230400
-laser_scan_dir: true         # flip if scan appears mirrored
-enable_angle_crop_func: false
+services:
+  web:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # NEW
+    # ipc/pid already inherited from x-ros-common; no change
 ```
 
-**Web (no new deps):**
+## Integration Points Into Existing Stack
 
-```bash
-# Nothing to install — roslib 2.1.0 and React 19 already present.
-# Add a new component: web/components/lidar-scan-overlay.tsx
-```
+### 1. `/logs` view
+
+- **Browser** → WS connect to `wss://mower.local:3000/logs?container=<name>` (same origin, no CORS)
+- **`server.mjs`** → second `server.on('upgrade')` branch matching `url.pathname === '/logs'`. On upgrade:
+  1. Validate `container` query param against `docker.listContainers({all:false})` — reject unknown IDs with 1008 close code.
+  2. `docker.getContainer(id).logs({stdout:true, stderr:true, follow:true, tail:500, timestamps:true}, cb)`.
+  3. Pipe through `container.modem.demuxStream(stream, stdoutSink, stderrSink)` where each sink calls `ws.send(JSON.stringify({stream:'stdout'|'stderr', line}))`.
+  4. On `ws.close`, call `stream.destroy()` to release the upstream.
+- **Next.js** → new route `web/app/logs/page.tsx` + `web/components/logs/LogViewer.tsx`. Fetch container list via a small REST endpoint (`app/api/containers/route.ts` → dockerode `listContainers`) — cheaper than exposing it on the WS channel.
+- **State:** ephemeral, no Zustand store needed. Local `useRef` circular buffer (cap 10 K lines).
+- **Do not** route through rosbridge; these are orthogonal transports.
+
+### 2. SLAM → EKF yaw fusion
+
+- **Topic:** `slam_toolbox` publishes `geometry_msgs/msg/PoseWithCovarianceStamped` on `/pose` (verified in `docs.ros.org/en/humble/p/slam_toolbox/`). Frame is `map`.
+- **EKF config (`config/ekf.yaml`):**
+  ```yaml
+  pose0: /pose
+  pose0_config: [false, false, false,   # x, y, z
+                 false, false, true,    # roll, pitch, YAW  ← only yaw
+                 false, false, false,
+                 false, false, false,
+                 false, false, false]
+  pose0_differential: false
+  pose0_relative: false
+  pose0_queue_size: 5
+  pose0_rejection_threshold: 5.0   # Mahalanobis; tune after first bag
+  pose0_nodelay: false
+  ```
+- **TF tree implication:** `slam_toolbox` already owns `map → odom`. Fusing `/pose` yaw into the EKF is **not** a competing authority over `map → odom` — EKF publishes `odom → base_link`. The two remain disjoint. Confirm `world_frame: odom`, `map_frame: map`, `odom_frame: odom` in `ekf.yaml` (standard dual-EKF is optional; single EKF with pose0-as-yaw is sufficient for this milestone).
+- **Tuning lever:** adjust `slam_toolbox`'s `yaw_covariance_scale` (default 1.0) — the EKF consumes the published covariance directly. Start at 1.0; if yaw is jittery raise to 2.0–3.0.
+- **Gotcha:** until firmware publishes `/odom`, EKF's `odom0` input is missing → EKF degenerates toward pose-only updates. This is acceptable *while stationary* (yaw becomes trustworthy) but motion will still bleed into x/y. Documented debt carried from v2.1.
+
+### 3. `/lidar` residuals + persistence + reset
+
+- **Residuals (Canvas 2D transform):** `<MapBitmap>` currently draws the grid at fixed canvas coordinates. Change: read `map → base_link` TF (via existing `tf2_web_republisher` or a direct `/tf` subscription already in the stack), and translate the canvas origin by `-(robot.x, robot.y) * pixelsPerMeter` before `drawImage`. Pattern:
+  ```ts
+  ctx.save();
+  ctx.translate(canvasCenterX - robot.x * ppm, canvasCenterY + robot.y * ppm);
+  ctx.drawImage(mapBitmap, 0, 0);
+  ctx.restore();
+  ```
+  Grid now anchored to `map` frame; robot glyph stays centered; grid visibly scrolls beneath it.
+- **Persistence (IndexedDB via `idb-keyval`):**
+  - Store: `set('mower:lastMap', { width, height, resolution, origin, data: Uint8Array })` on every `/map` update (debounce to 1 Hz — OccupancyGrid can be MB-scale).
+  - Rehydrate: on mount, `get('mower:lastMap')` → hand to `<MapBitmap>` as initial state before first live `/map` arrives. Avoids the "blank canvas until SLAM ticks" UX.
+  - **Do not** use `localStorage`: 5 MiB cap, synchronous, string-only. A 2048×2048 grid is already 4 MiB raw / ~6 MiB base64 — will throw `QuotaExceededError` on real maps. Verified against MDN Storage API docs.
+- **Honest reset:** new Next.js route `POST /api/slam/reset` → calls `slam_toolbox`'s existing `serialize_map` / `clear_map` service via rosbridge from the server side (or shells out to `ros2 service call /slam_toolbox/clear_changes std_srvs/srv/Empty`). Also deletes the IndexedDB key. Wired to the Eraser button. "Honest" = state truly cleared on the robot, not just visually on the client.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| `ldlidar_stl_ros2` (official) | `Myzhar/ldrobot-lidar-ros2` | If you need ROS2 Lifecycle-node semantics (managed start/stop/configure transitions) — Myzhar's fork wraps the driver as a LifecycleNode, nicer for Nav2 bring-up orchestration later. Downside: more ceremony, and it pulls `nav2_utils` which is heavier than this milestone needs. Reasonable to swap to this in the Nav2 milestone. |
-| `ldlidar_stl_ros2` | `ldlidar_ros2` ("NEW" from same vendor) | If you later add an LD14 / LD14P unit to the fleet — the `_ros2` repo adds LD14 support but is earlier in its lifecycle (17 commits vs the mature `_stl_ros2`). No upside for LD19-only today. |
-| `ldlidar_stl_ros2` | `richardw347/ld19_lidar` | Minimal single-purpose driver; useful as a reference implementation or if debugging a parser issue, but abandoned-ish and no intensity/angle-crop features. |
-| Hardware `uart3` on GPIO4/5 | USB-UART dongle on Pi USB port | If the HAT cannot be modified at all and pigtailing to GPIO4/5 is unacceptable. Downside: consumes a USB port, adds a CP2102/CH340 between you and the sensor, and creates a fourth device-path (`/dev/ttyUSB0`) to udev-symlink. Works, but less clean than the native PL011 route. |
-| Hardware `uart3` | `uart5` on GPIO12/13 | If GPIO4/5 are needed for a future peripheral (e.g. 1-Wire temp sensor). `uart5` is electrically equivalent but physically closer to the BTS7960 PWM traces on the existing HAT — slightly worse EMI story for a 230400 baud signal. |
-| Canvas 2D polar overlay | `react-three-fiber` + drei | If you later want to render a fused 3D scene (robot model + scan + path + costmap) on a dedicated 3D view page. Overkill for a 2D polar dot cloud on the existing Leaflet map. |
-| Canvas 2D polar overlay | Foxglove Studio (embedded or standalone) | If you want pro-grade multi-panel robot observability and are willing to run it alongside the existing Next.js dashboard. Not a replacement for the dashboard — it's a different tool aimed at developers, not end-users. |
+| `dockerode` | `node-docker-api` | Never for this project — in beta, 1/18 the downloads, same underlying modem, less battle-tested. |
+| `dockerode` | Raw `http` over `/var/run/docker.sock` | Only if avoiding a dep is critical. You'd re-implement multiplexed-stream framing (8-byte header: stream-type + length). Not worth the ~200 LoC and bug surface. |
+| `dockerode` direct | [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) in front | Use if you want defense-in-depth: HAProxy-based allow-list of Docker API endpoints (e.g. `CONTAINERS=1`, block `POST`). Sound for hardening but adds a service. Defer to a later hardening milestone. |
+| IndexedDB via `idb-keyval` | `localStorage` | Only for sub-MB data. OccupancyGrid is explicitly too big. Rejected. |
+| IndexedDB via `idb-keyval` | Raw `indexedDB` API | Only if you already have an IDB abstraction. `idb-keyval` is 600 bytes — not worth rolling open/txn/cursor boilerplate for a single KV. |
+| IndexedDB via `idb-keyval` | `dexie.js` | Overkill for one key. Adopt if future milestones need indexes/queries (mission history, bag snippets). |
+| `slam_toolbox` `/pose` → EKF `pose0` | AMCL + `/amcl_pose` | AMCL is for localization in a **prior** map. We're running SLAM. Wrong tool for the lifecycle. |
+| `slam_toolbox` `/pose` → EKF | Fire `/tf` `map→odom` at EKF indirectly | EKF doesn't consume `/tf` as a measurement — it *produces* TF. Direct `pose0` subscription is correct. |
+| xterm.js | `react-console-emulator` / `<pre>` | Start with `<pre>` + `overflow-y:auto`. Upgrade to xterm.js only if ANSI color is requested — the additional bundle is ~200 KB. |
 
-## What NOT to Use
+## What NOT to Use / Change
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `ttyS0` (miniUART) on Pi 4 for LD19 | miniUART baud clock is derived from the VPU core clock and jitters at non-115200 rates; 230400 is unreliable and drops bytes → CRC8 failures in the LD19 packet parser | Any PL011-backed UART (`ttyAMA1` via `dtoverlay=uart3`) |
-| `dtoverlay=uart2` (GPIO0/1) | Collides with the HAT ID EEPROM I2C lines that Pi firmware probes at boot for HAT autodetect; breaks the v2.0 HAT's existing identification | `dtoverlay=uart3` on GPIO4/5 |
-| `dtoverlay=uart4` (GPIO8/9) | GPIO8 drives the WS2812 status LED on the existing HAT — taking it for UART kills the status LED feature | `dtoverlay=uart3` |
-| Routing LD19 through the ESP32 as a pass-through | Adds 115200-baud serialization + micro-ROS message overhead + ESP32-C3 single-core CPU budget (already running motor control + encoder ISRs + watchdog) to a 230400 baud sensor stream with real-time constraints. Will drop scan points under load. | Direct Pi UART connection |
-| `ros3djs` for LaserScan viz | Last meaningful release 2019, pinned to legacy Three.js, unmaintained, poor fit for React 19 + Next.js 16 App Router and server components | Plain Canvas2D component, or react-three-fiber if 3D is genuinely needed |
-| `ros2djs` for LaserScan viz | Similarly unmaintained; was never first-class for LaserScan (designed for occupancy grids) | Plain Canvas2D component |
-| `ld19_lidar` (richardw347) as the production driver | Narrower feature set, less active, no angle-crop / intensity handling — fine as a reference but not as the deployed driver | `ldlidar_stl_ros2` |
-
-## Stack Patterns by Variant
-
-**If the wire run from LD19 to Pi is > 20 cm (mower chassis mounting):**
-- Keep `dtoverlay=uart3` but add a series resistor (~330Ω) on the LD19 TX line and a 100nF decoupling cap at the Pi end
-- Consider shielded cable; 230400 baud TTL is not bulletproof over long unshielded jumpers near motor PWM
-
-**If the web dashboard later needs to render multiple lidars or fused pointclouds:**
-- Graduate from Canvas2D to `react-three-fiber` + `@react-three/drei`
-- Use `BufferGeometry` + `Points` material for scan rendering
-- Skip `ros3djs` entirely
-
-**If you later migrate to Pi 5:**
-- Pi 5 has different UART numbering and more flexible pin muxing
-- `dtoverlay=uart3` still works but review the Pi 5 dt-bindings file, and reverify which `ttyAMAn` the kernel assigns
-
-**If Nav2 / slam_toolbox comes online in a later milestone:**
-- Swap to `Myzhar/ldrobot-lidar-ros2` for LifecycleNode support, OR keep `ldlidar_stl_ros2` and wrap it in your own lifecycle manager
-- Ensure the static TF `base_link → laser` is correct to mm-level — slam_toolbox is unforgiving of lever-arm errors
+| Swapping `rosbridge` for something else | Works, CBOR+NaN-scrub pipeline is load-bearing and validated | Keep `rosbridge`. Add `/logs` as a **separate** WS path in `server.mjs`. |
+| `ros3djs` / `ros2djs` | Unmaintained, React-hostile (v2.1 decision still holds) | Canvas 2D, already in place. |
+| Migrating to ROS2 Jazzy/Iron | v2.2 scope is ops polish, not platform migration; constraint locked in PROJECT.md | Stay on Humble. |
+| Adding a new DDS-speaking container for logs | Docker logs are a container-runtime concern, not a robotics concern | Sidecar pattern in `server.mjs` via dockerode. |
+| Exposing `docker.sock` directly to the browser (e.g. through a port) | Trivial privilege escalation | `server.mjs` sidecar with explicit allow-list of containers + operations (read-only log streaming only). |
+| `node-docker-api` | Beta, low usage, no advantage | `dockerode`. |
+| `localStorage` for the OccupancyGrid | 5 MiB quota, synchronous, string-only | IndexedDB via `idb-keyval`. |
+| Writing back `/map` from the browser (client-authoritative reset) | State lies about reality on the robot | Server-side `/api/slam/reset` calls the real service. |
+| Subscribing to `/pose` from the browser for the Canvas transform | `/pose` is the SLAM output; fine for the transform, but realize it updates at scan rate (~10 Hz), not render rate. Use it, but interpolate/cache the last pose in the render loop. | OK to subscribe — just don't gate rendering on new messages. |
+| Second EKF instance just for SLAM | Unneeded complexity — one EKF with `pose0` is the documented pattern | Single EKF, `pose0` added. |
 
 ## Version Compatibility
 
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `ldlidar_stl_ros2` @ HEAD | ROS2 Foxy, Galactic, Humble, Iron, Jazzy | Vendor claims "Foxy and above"; Humble is the sweet spot with the most community validation |
-| `ldlidar_stl_ros2` | `rmw_cyclonedds_cpp` | No middleware-specific code; uses standard `sensor_msgs/LaserScan` pub — safe with CycloneDDS |
-| `sensor_msgs/LaserScan` JSON via rosbridge | `roslib@2.1.0` | Works; NaN values in `ranges[]` require the existing NaN sanitization proxy |
-| `dtoverlay=uart3` | Ubuntu 22.04 on Pi 4 | Confirmed in Raspberry Pi kernel docs; config lives in `/boot/firmware/config.txt` on Ubuntu 22.04 (not `/boot/config.txt`) |
-| LD19 protocol | `ldlidar_stl_ros2` driver | 230400 8N1, 0x54/0x2C header, 12 points/packet, CRC8 — parser handles this natively |
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `dockerode@^4.0.10` | Node 18+ (web container runs Node 22 Alpine) | Verified. Uses `@grpc/grpc-js` for BuildKit features we don't need; they're lazy-loaded. |
+| `dockerode@^4` | Docker Engine 20.10+ (Pi OS Bookworm ships 24.x) | Remote API v1.41+, well supported. |
+| `idb-keyval@^6` | All evergreen browsers; React 19 agnostic | Pure ES module. |
+| `slam_toolbox humble-2.6.10` | `robot_localization` humble | `/pose` is `geometry_msgs/msg/PoseWithCovarianceStamped` — exactly the type `pose0` expects. |
+| `robot_localization` (Humble) | Existing `ekf.yaml` format | Adding `pose*` params is fully backward-compatible with the current `imu0` / `odom0` config. |
 
-## Verified Protocol Facts (LD19)
+## Confidence Breakdown
 
-- **Baud:** 230400, 8N1, no parity, no flow control — verified against LDROBOT Development Manual v2.3 (Elecrow PDF) and LudovaTech tutorial repo
-- **Direction:** One-way (sensor → host); sensor auto-starts on power-up, no command protocol
-- **Packet header:** 0x54 0x2C
-- **Frame layout:** Header + VerLen (1B) + Speed (2B) + StartAngle (2B) + 12× {Distance (2B), Intensity (1B)} + EndAngle (2B) + Timestamp (2B) + CRC8 (1B) = 47 bytes
-- **Distance units:** mm (uint16)
-- **Scan rate:** ~10 Hz nominal (speed field is rotation speed in deg/s)
-- **Out-of-range / invalid points:** Surface as NaN in `LaserScan.ranges[]` — handled by existing NaN sanitizer
-
-Confidence: HIGH (Manufacturer manual + independent tutorial + driver source agree)
+| Claim | Level | Basis |
+|-------|-------|-------|
+| `dockerode` 4.0.10 is current, streams demux work | HIGH | Context7 `/apocas/dockerode` + npm registry verified 2026-03 release |
+| `slam_toolbox` publishes `PoseWithCovarianceStamped` on `/pose` with covariance scale knobs | HIGH | Official docs `docs.ros.org/en/humble/p/slam_toolbox/` |
+| `robot_localization` `pose0` accepts `PoseWithCovarianceStamped`, config array format | HIGH | Official docs (state_estimation_nodes) + `cra-ros-pkg/robot_localization` example yaml |
+| `localStorage` ~5 MiB limit insufficient; IndexedDB appropriate | HIGH | MDN Storage quotas docs |
+| `docker.sock:ro` does not actually sandbox the API | HIGH | Well-known Docker semantics — bind-mount `ro` only affects inode writes, not socket protocol |
+| Canvas-2D translate-before-drawImage is the standard pattern for map-anchored rendering | HIGH | Canvas2D spec; equivalent to the v2.1 `<MapBitmap>` existing transform |
 
 ## Sources
 
-- [ldlidar_stl_ros2 — LDROBOT official ROS2 driver](https://github.com/ldrobotSensorTeam/ldlidar_stl_ros2) — driver choice, launch params, LD19 support — **HIGH**
-- [ldlidar_ros2 — LDROBOT newer variant (LD14+)](https://github.com/ldrobotSensorTeam/ldlidar_ros2) — alternative comparison — **HIGH**
-- [Myzhar/ldrobot-lidar-ros2 — Lifecycle-node alternative](https://github.com/Myzhar/ldrobot-lidar-ros2) — alternative for future Nav2 milestone — **HIGH**
-- [richardw347/ld19_lidar — minimal reference driver](https://github.com/richardw347/ld19_lidar) — alternative / reference — **MEDIUM**
-- [LDROBOT LD19 Development Manual v2.3 (PDF)](https://www.elecrow.com/download/product/SLD06360F/LD19_Development%20Manual_V2.3.pdf) — protocol spec, baud rate, packet format — **HIGH**
-- [LudovaTech/lidar-LD19-tutorial](https://github.com/LudovaTech/lidar-LD19-tutorial) — independent protocol verification — **HIGH**
-- [Raspberry Pi documentation — UART configuration](https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/uart.adoc) — dtoverlay pin assignments — **HIGH**
-- [Raspberry Pi Forums — Pi 4 Activating additional UART ports](https://forums.raspberrypi.com/viewtopic.php?t=244827) — uart2-5 reliability, GPIO conflicts, miniUART caveats — **HIGH**
-- [Waveshare DTOF LIDAR LD19 wiki](https://www.waveshare.com/wiki/DTOF_LIDAR_LD19) — wiring reference — **MEDIUM**
-- [Setting Up STL-19P on ROS 2 Jazzy (Nov 2025)](https://harminder.dev/blog/2025/11/02/setting-up-and-running-the-d500-lidar-kits-stl-19p-on-ros-2-jazzy/) — recent maintenance confirmation of the LDROBOT driver — **MEDIUM**
-- [RobotWebTools/ros3djs](https://github.com/RobotWebTools/ros3djs) — checked for viability, ruled out as unmaintained — **HIGH**
-- [roslib on npm](https://www.npmjs.com/package/roslib) — current version 2.1.0 already in project — **HIGH**
+- Context7: `/apocas/dockerode` — log stream follow + demux pattern
+- [dockerode on npm](https://www.npmjs.com/package/dockerode) — v4.0.10, weekly DL
+- [dockerode vs node-docker-api trends (npmtrends)](https://npmtrends.com/dockerode-vs-node-docker-api)
+- [slam_toolbox Humble 2.6.10 docs](https://docs.ros.org/en/humble/p/slam_toolbox/) — `/pose` topic, `yaw_covariance_scale`
+- [SteveMacenski/slam_toolbox GitHub](https://github.com/SteveMacenski/slam_toolbox) — `pose_pub_` source
+- [robot_localization state_estimation_nodes docs](https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html) — pose0 semantics, config array
+- [cra-ros-pkg/robot_localization ekf.yaml example](https://github.com/cra-ros-pkg/robot_localization/blob/ros2/params/ekf.yaml) — config patterns
+- [MDN Storage quotas and eviction](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) — localStorage 5 MiB cap, IndexedDB quota model
+- [web.dev Storage for the web](https://web.dev/articles/storage-for-the-web) — persistence semantics
+- [Tecnativa docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) — reference for future hardening (not adopted this milestone)
 
 ---
-*Stack research for: LD19 LiDAR integration into existing ROS2 Humble + Pi 4 + Next.js stack*
-*Researched: 2026-04-14*
+*Stack research for: MowerBot v2.2 Ops & Fusion Polish — additive only*
+*Researched: 2026-04-15*

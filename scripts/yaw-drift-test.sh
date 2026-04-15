@@ -49,7 +49,7 @@ echo ""
 # ═══════════════════════════════════════════════════════════════════════════
 #  1. Pruefen ob /odometry/filtered publisht (fail-fast guard)
 # ═══════════════════════════════════════════════════════════════════════════
-if ! docker exec "$CONTAINER" ros2 topic list 2>/dev/null | grep -q "^${TOPIC}\$"; then
+if ! docker exec "$CONTAINER" bash -c "source /opt/ros/humble/setup.bash && ros2 topic list" 2>/dev/null | grep -q "^${TOPIC}\$"; then
   echo "[yaw-drift-test] ${TOPIC} not publishing — is ${CONTAINER} running and EKF up?" >&2
   exit 1
 fi

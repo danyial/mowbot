@@ -60,19 +60,19 @@
 
 ## Traceability
 
-Filled by `/gsd-new-milestone` roadmapper.
+| REQ-ID  | Phase   | Status  |
+|---------|---------|---------|
+| LOGS-01 | Phase 6 | pending |
+| LOGS-02 | Phase 6 | pending |
+| LOGS-03 | Phase 6 | pending |
+| LOGS-04 | Phase 6 | pending |
+| FUSE-01 | Phase 7 | pending |
+| FUSE-02 | Phase 7 | pending |
+| FUSE-03 | Phase 7 | pending |
+| FUSE-04 | Phase 7 | pending |
+| MAP-01  | Phase 8 | pending |
+| MAP-02  | Phase 8 | pending |
+| MAP-03  | Phase 8 | pending |
+| MAP-04  | Phase 8 | pending |
 
-| REQ-ID | Phase | Status |
-|--------|-------|--------|
-| LOGS-01 | — | pending |
-| LOGS-02 | — | pending |
-| LOGS-03 | — | pending |
-| LOGS-04 | — | pending |
-| FUSE-01 | — | pending |
-| FUSE-02 | — | pending |
-| FUSE-03 | — | pending |
-| FUSE-04 | — | pending |
-| MAP-01 | — | pending |
-| MAP-02 | — | pending |
-| MAP-03 | — | pending |
-| MAP-04 | — | pending |
+**Coverage:** 12/12 v2.2 requirements mapped to exactly one phase. No orphans, no duplicates.

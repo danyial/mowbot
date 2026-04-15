@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Ops & Fusion Polish
-status: defining_requirements
-last_updated: "2026-04-15T16:30:00Z"
+status: roadmap_complete
+last_updated: "2026-04-15T17:00:00Z"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -14,32 +14,44 @@ progress:
 
 # State: MowerBot
 
-**Last updated:** 2026-04-15 (v2.2 started — defining requirements)
+**Last updated:** 2026-04-15 (v2.2 roadmap created — Phase 6 ready to plan)
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-04-15)
 
 - **Last shipped milestone:** v2.1 LD19 LiDAR Integration (2026-04-15)
-- **Core value:** `/scan` + `/map` flow end-to-end from LD19 → ROS2 → browser
-- **Current focus:** Planning v2.2 Ops & Fusion Polish
+- **Active milestone:** v2.2 Ops & Fusion Polish
+- **Core value (v2.2 gate):** Operator can (1) see every container's live logs in-browser, (2) trust SLAM map's rotational alignment under motion, (3) walk away, reload, and find the same map — or honestly reset it
+- **Current focus:** Phase 6 (WebUI Container-Logs View) — not started
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-15 — Milestone v2.2 Ops & Fusion Polish started
+Phase: **6 — WebUI Container-Logs View**
+Plan: — (awaiting `/gsd-plan-phase 6`)
+Status: Not started
+Progress: `[ ][ ][ ]` (0 / 3 v2.2 phases complete)
+Last activity: 2026-04-15 — v2.2 roadmap created (Phases 6–8)
 
-## Next Milestone — v2.2 Ops & Fusion Polish (planned)
+## v2.2 Phase Queue
 
-Three phases, ordered by dependency:
+| # | Phase | Requirements | Depends on | Status |
+|---|-------|--------------|------------|--------|
+| 6 | WebUI Container-Logs View | LOGS-01..04 | — | Not started ← next |
+| 7 | SLAM Pose → EKF Yaw Fusion | FUSE-01..04 | Phase 6 (soft) | Not started |
+| 8 | `/lidar` Map-Anchor + Persistence + Honest Reset | MAP-01..04 | Phase 7 (hard — for rotational correctness) | Not started |
 
-1. **WebUI Container-Logs View** — sidecar agent (Node + dockerode) behind `server.mjs` WebSocket proxy, new `/logs` route
-2. **SLAM Pose → EKF Yaw Fusion** — feed `slam_toolbox`'s scan-matched pose into `robot_localization` to stabilize yaw
-3. **/lidar Residuals** — map-anchor (subtract `map→base_link`), localStorage persistence, server-side honest-reset
+## Accumulated Context
 
-## Deferred Items (Carried from v2.1)
+### Key Decisions (carried into v2.2)
+
+- **Logs sidecar lives inside the existing `web` container** — no new service; `server.mjs` gets a second WS path (`/logs/stream/:name`) via the existing single-upgrade-handler pattern with path dispatch (do NOT add a second `server.on('upgrade')`).
+- **`docker.sock` mounted RO** on the `web` service; dockerode method allowlist at the Node layer (`list` + `logs` + `inspect` only).
+- **Single odom-frame EKF, yaw-only `pose0`** — not a dual-EKF refactor. `imu0` yaw index is flipped to `false` simultaneously with adding `pose0`. slam_toolbox remains the sole owner of `map→odom`.
+- **Epoch-keyed localStorage persistence** for the occupancy grid — `/api/map/reset` bumps the epoch, client compares its persisted epoch against the server's on mount, discards on mismatch.
+- **Preserve all v2.1 load-bearing patterns:** CBOR compression + typed-array-exempt NaN scrubber, Foxglove bridge on :8765, `x-ros-common` anchor (ipc:host + pid:host) on all new ROS containers (N/A this milestone — no new ROS containers).
+
+### Deferred Items (Carried from v2.1)
 
 | Category | Item | Status |
 |----------|------|--------|
@@ -47,25 +59,27 @@ Three phases, ordered by dependency:
 | requirement | HW-05 (5V rail transient under load) | blocked on drivetrain electrically connected |
 | human-UAT | Phase 3 × 4 walkthroughs | outdoor GPS walk + bufferedAmount + stale badge + Foxglove open |
 | human-UAT | Phase 4 × 5 walkthroughs | MapBitmap render + Eraser + Home + /map regression + v0 honest-limit |
-| documentation | Phase 1 & 2 VERIFICATION.md | never formally generated (compensated downstream) |
-| scope | `/lidar` map-scan alignment under motion | gated on yaw fusion (v2.2) |
-| scope | SLAM → EKF yaw fusion | planned Phase 6 (v2.2) |
+| documentation | v2.1 Phase 1 & 2 VERIFICATION.md | never formally generated (compensated downstream) |
+
+### Open Todos / Blockers
+
+- None at roadmap creation. Phase 6 can start immediately via `/gsd-plan-phase 6`.
 
 ## Session Continuity
 
 ### Resumption context
 
-v2.1 archived. To start v2.2: `/gsd-new-milestone` (questioning → research → requirements → roadmap). The three planned phases are already scoped in PROJECT.md §Active and ROADMAP.md §"v2.2 Ops & Fusion Polish".
+v2.2 roadmap is written and approved; Phases 6–8 are defined in `.planning/ROADMAP.md` with success criteria. REQUIREMENTS.md traceability table is populated. Next step: `/gsd-plan-phase 6` to decompose Phase 6 into executable plans.
 
 ### Recent events
 
+- 2026-04-15 — v2.2 roadmap created: 3 phases (6, 7, 8), 12 requirements mapped 100%.
+- 2026-04-15 — v2.2 research complete (SUMMARY, ARCHITECTURE, PITFALLS) and REQUIREMENTS.md written.
 - 2026-04-15 — v2.1 milestone closed: 5 phases / 7 plans / 24 tasks shipped; tag `v2.1` placed; ROADMAP/REQUIREMENTS archived under `milestones/`.
-- 2026-04-14 — Phase 4 (live SLAM mapping) shipped; `/map` OccupancyGrid rendered as bitmap on `/lidar` with zoom/pan/reset UX.
-- 2026-04-14 — Phase 3 shipped (Core Value gate reached): `/scan` CBOR pipeline + Canvas 2D polar overlay + Foxglove layout.
-- 2026-04-14 — Phase 2 shipped: `ldlidar_stl_ros2` containerized + `x-ros-common` anchor retrofit.
-- 2026-04-14 — Phase 1 shipped (HW-04/HW-05 deferred): `/dev/ttyLIDAR` on `uart3` via GPIO4/5 pigtail.
-- 2026-04-14 — Phase 0 shipped: GSD brownfield adoption, annotated tag `gsd-baseline-v0`.
+- 2026-04-14 — v2.1 Phase 4 (live SLAM mapping) shipped; `/map` OccupancyGrid rendered as bitmap on `/lidar`.
+- 2026-04-14 — v2.1 Phase 3 shipped (Core Value gate reached).
+- 2026-04-14 — v2.1 Phases 0–2 shipped (brownfield adoption, UART, driver).
 
 ---
-*State initialized: 2026-04-14 after roadmap creation*
-*Last transition: 2026-04-15 — v2.2 started, defining requirements*
+*State initialized: 2026-04-14 after v2.1 roadmap creation*
+*Last transition: 2026-04-15 — v2.2 roadmap created, Phase 6 ready to plan*

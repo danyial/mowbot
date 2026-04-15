@@ -592,11 +592,12 @@ export function ScanCanvas({
         </div>
       ) : null}
 
-      {/* Plan 04-02 — Reset button (bottom-right). Clears useMapStore
+      {/* Plan 04-02 — Reset button (top-left). Clears useMapStore
           optimistically so the bitmap wipes within the P3 2 s assertion
           window even before the next /map publish, then invokes the
           /slam_toolbox/reset service. Does NOT touch viewRef — non-interference
-          invariant with ⌂ (P3.1). */}
+          invariant with ⌂ (P3.1). Moved from bottom-right to top-left to avoid
+          overlap with the viridis legend. Quick 260414-fix. */}
       <button
         type="button"
         onClick={async () => {
@@ -614,8 +615,8 @@ export function ScanCanvas({
         aria-label="Reset map"
         style={{
           position: "absolute",
-          right: 8,
-          bottom: 8,
+          left: 8,
+          top: 8,
           zIndex: 600,
           width: 32,
           height: 32,

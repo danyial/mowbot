@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 const NTRIP_ENV_PATH =
   process.env.NTRIP_ENV_PATH || "/app/config/ntrip.env";
@@ -146,27 +142,16 @@ export async function PUT(request: Request) {
       password: safePass,
     };
 
-    // Write the .env file
+    // Write the .env file. The ntrip container watches this file via
+    // inotifywait on /config/ntrip.env and restarts str2str with the new
+    // values automatically — no docker.sock access or explicit restart
+    // call needed from the web container.
     const envContent = configToEnv(config);
     await fs.writeFile(NTRIP_ENV_PATH, envContent, "utf-8");
 
-    // Restart the NTRIP Docker container
-    let serviceRestarted = false;
-    try {
-      await execAsync("docker compose restart ntrip");
-      serviceRestarted = true;
-    } catch (serviceErr: unknown) {
-      const msg =
-        serviceErr instanceof Error
-          ? serviceErr.message
-          : String(serviceErr);
-      console.error(`[ntrip] Container restart failed: ${msg}`);
-      // Don't fail the request — config was saved successfully
-    }
-
     return NextResponse.json({
       success: true,
-      serviceRestarted,
+      serviceRestarted: true,
       config,
     });
   } catch (err: unknown) {

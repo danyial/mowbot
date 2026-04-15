@@ -34,8 +34,14 @@ yarn-error.log*
 # KiCad
 hardware/.history/
 hardware/*-backups/
+hardware/backups/
 hardware/*.lck
 hardware/fp-info-cache
+*-erc.rpt
+
+# Local IDE / tooling
+.claude/
+.playwright-mcp/
 
 # Phase 4 Plan 04-02 — local Playwright env for regression sentinel
 .planning/phases/04-live-mapping-slam-toolbox/_playwright_env/node_modules/

@@ -108,7 +108,7 @@ Per PROJECT.md Out of Scope — re-evaluate at next milestone, do not add phases
 **Goal**: A new `slam` Docker service runs `slam_toolbox`'s `online_async_slam_toolbox_node` consuming `/scan` + `/odometry/filtered`, publishes a live `nav_msgs/OccupancyGrid` on `/map` with a correct `map → odom` TF, and the web `/lidar` page renders the occupancy grid as a bitmap underneath the scan overlay — operator sees "everything the robot has seen so far, stitched together" without needing RViz or Foxglove.
 
 **Depends on:** Phase 3
-**Requirements**: TBD (likely MAP-01..MAP-05 to be added in REQUIREMENTS.md during planning)
+**Requirements**: MAP-01, MAP-02, MAP-03, MAP-04, MAP-05
 **Success Criteria (what must be TRUE):**
   1. `docker compose up slam` brings up `slam_toolbox` in async mode; `ros2 topic hz /map` shows updates at ≥ 0.5 Hz under indoor scan; `ros2 topic echo /map --once` returns a populated `nav_msgs/OccupancyGrid`.
   2. TF tree contains `map → odom → base_link → laser_frame` without warnings under `ros2 run tf2_tools view_frames`; the `map → odom` transform is published by slam_toolbox, not static.
@@ -121,8 +121,9 @@ Per PROJECT.md Out of Scope — re-evaluate at next milestone, do not add phases
 - Preserve existing `/lidar` zoom/pan/reset UX from quicks `260414-w8p` + `260415-9ww`.
 - Honest v0 limitation: no loop closure in async mode — accumulated drift on long trajectories expected.
 
-**Plans:** 0 plans
-- [ ] TBD (run `/gsd-plan-phase 4` to break down)
+**Plans:** 2 plans
+- [ ] 04-01-PLAN.md — slam_toolbox Docker service + project params YAML (base_link, do_loop_closing:false, use_sim_time:=false) + compose wire-up + MAP-01..MAP-05 in REQUIREMENTS.md; SSH-verified /map + TF tree + stationary no-drift
+- [ ] 04-02-PLAN.md — Web: OccupancyGrid types + TOPICS.MAP (1 Hz CBOR) + useMapStore + callSlamReset service + MapBitmap component (offscreen putImageData) layered under ScanCanvas on /lidar + Eraser reset button; zero regressions on /map or /lidar UX
 
 ---
 *Roadmap defined: 2026-04-14*

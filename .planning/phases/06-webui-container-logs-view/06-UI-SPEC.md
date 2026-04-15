@@ -35,25 +35,24 @@ created: 2026-04-15
 
 ## Spacing Scale
 
-Declared values (Tailwind defaults; all multiples of 4):
+Declared values (Tailwind defaults; all multiples of 4 from the standard set 4, 8, 16, 24, 32, 48, 64):
 
 | Token | Tailwind | Value | Usage in `/logs` |
 |-------|----------|-------|------------------|
-| xs | `1` / `gap-1` | 4px | Chip internal icon gap, status-dot to label |
-| sm | `2` / `gap-2` / `p-2` | 8px | Container-row padding, chip padding-y, list-item vertical rhythm |
-| md | `3` / `p-3` | 12px | Container-list row padding-x, header padding-y |
-| base | `4` / `p-4` | 16px | Right-pane header padding, default component spacing |
+| xs | `1` / `gap-1` | 4px | Chip internal icon gap, status-dot to label, log-row vertical padding (`py-1`) |
+| sm | `2` / `gap-2` / `p-2` | 8px | Container-row padding-y, chip padding-y, list-item vertical rhythm |
+| base | `4` / `p-4` | 16px | Container-list row padding-x, right-pane header padding (x + y), default component spacing |
 | lg | `6` / `p-6` | 24px | Empty-state block padding |
 | xl | `8` | 32px | Large layout gaps (not expected in this phase) |
 
 Layout-specific fixed values:
 - Left pane desktop width: **280px** (`w-[280px]`) — locked by CONTEXT.md
 - Right-pane header height: **56px** (`h-14`) — matches existing AppShell header rhythm
-- Log-row vertical padding: **2px** top + 2px bottom (`py-0.5`) — exception for terminal density; justified by "monospace log stream" intent
-- Log-row horizontal padding: **12px** (`px-3`)
+- Log-row vertical padding: **4px** top + 4px bottom (`py-1`) — tightest value permitted by the multiple-of-4 rule; preserves terminal density
+- Log-row horizontal padding: **16px** (`px-4`)
 - Touch targets (chips, Resume pill, mobile drawer toggle): **min 44px** hit area — use `min-h-11` on clickable chips/pills
 
-**Exceptions:** log-row `py-0.5` (4px total vertical) — terminal-density requirement overrides the 8px minimum for text blocks.
+**Exceptions:** none. All spacing values used in this spec come from the standard set {4, 8, 16, 24, 32, 48, 64}.
 
 ---
 
@@ -102,7 +101,7 @@ Dark theme is authoritative. 60/30/10 split expressed against the existing `glob
 
 **Line-stream coloring convention:**
 - stdout lines: default `text-foreground`
-- stderr lines: prefix with a 2px left border `border-l-2 border-destructive/60 pl-2.5` (replaces the normal `pl-3`) — subtle enough not to shout, clear enough to spot at scroll speed.
+- stderr lines: prefix with a 2px left border `border-l-2 border-destructive/60 pl-[14px]` (replaces the normal `pl-4`, preserving 16px visual left padding inclusive of border) — subtle enough not to shout, clear enough to spot at scroll speed.
 
 ---
 
@@ -115,8 +114,8 @@ Dark theme is authoritative. 60/30/10 split expressed against the existing `glob
 
 ### Left pane: Container list
 
-- Header row (56px / `h-14`): label "Container" (`text-sm font-semibold`), right-aligned refresh-state dot (tiny `h-2 w-2 rounded-full`; green = events stream healthy, amber = reconnecting, red = `docker.sock` unreachable). No refresh button — the events stream is live.
-- Each row: 44px min height (`min-h-11`), padded `px-3 py-2`, flex layout:
+- Header row (56px / `h-14`): label "Container" (`text-sm font-semibold`), right-aligned refresh-state dot (tiny `h-2 w-2 rounded-full`; green = events stream healthy, amber = reconnecting, red = `docker.sock` unreachable). No refresh button — the events stream is live. Header padding: `px-4 py-4`.
+- Each row: 44px min height (`min-h-11`), padded `px-4 py-2`, flex layout:
   - Status dot (8px, `bg-primary` running / `bg-muted-foreground` exited)
   - Container name (truncate, `text-sm`), primary line
   - Image tag (truncate, `text-xs text-muted-foreground`), secondary line
@@ -149,10 +148,10 @@ Composed of three stacked regions:
   foreground
   tabular-nums
   select-none
-  mr-3
+  mr-4
 ```
 
-- Whole row: `px-3 py-0.5`
+- Whole row: `px-4 py-1`
 - Long lines: **wrap**, do not truncate (`whitespace-pre-wrap break-all`). Operator needs to see the full stderr, and Tailwind `break-all` handles pathless token floods from ROS warnings.
 - Row hover: no background change (would thrash at scroll speed). Optionally show a one-off copy icon on hover via `opacity-0 group-hover:opacity-100` — **defer to Future unless trivial**; not required this phase.
 - Gutter timestamp is **derived from the Docker `timestamps: true` output**, formatted client-side to `HH:MM:SS.sss` in the operator's local timezone. Do not show the date; the time window is always "recent".
@@ -161,7 +160,7 @@ Composed of three stacked regions:
 
 Six chips: `1m` `5m` `15m` `1h` `6h` `24h`. Plus an implicit seventh state "default" (no filter, `tail=200`).
 
-- Chip visual (inactive): `h-8 px-3 rounded-md text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80`
+- Chip visual (inactive): `h-8 px-2 rounded-md text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80`
 - Chip visual (active): `bg-primary text-primary-foreground`
 - Gap between chips: `gap-1` (4px)
 - When a preset is active, a small "Alle" ghost button appears to its right to clear back to default tail. Ghost button: `text-xs text-muted-foreground hover:text-foreground underline underline-offset-2`.
@@ -182,7 +181,7 @@ Shape: `h-6 px-2 rounded-full bg-secondary text-xs font-semibold inline-flex ite
 ### Resume auto-scroll pill
 
 - Visibility: only when auto-scroll is paused (operator scrolled up).
-- Shape: `h-8 px-3 rounded-full border border-primary text-primary text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-primary/10`
+- Shape: `h-8 px-2 rounded-full border border-primary text-primary text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-primary/10`
 - Icon: lucide `ArrowDown` at `h-3 w-3`
 - Copy: "Neueste anzeigen"
 - Click: scrolls stream container to `scrollHeight` smoothly and re-enables auto-scroll.
@@ -250,6 +249,7 @@ All operator-facing strings in German (matches existing dashboard locale). Engli
 - Connection-state badge: `role="status"` with `aria-label` echoing the state ("Verbindung live", "Verbindung wird aufgebaut", "Verbindung gestoppt").
 - Preset chips: grouped in `role="group" aria-label="Zeitfenster"`. Each chip is a `<button aria-pressed={active}>`.
 - Resume pill: `<button>` with visible label; no `aria-hidden`.
+- **Mobile drawer trigger:** the lucide `Menu` icon-only button in the right-pane header MUST declare `aria-label="Container-Liste öffnen"`. It is the only entry point to the container list on mobile; without the label, assistive tech would read it as an unlabeled button.
 - Color contrast: all declared token pairs meet WCAG AA on dark theme — `--foreground` on `--background` ≈ 15.5:1; `--muted-foreground` on `--background` ≈ 5.4:1 (gutter timestamps); `--primary` on `--background` ≈ 4.9:1 (selected chip text uses `--primary-foreground` on `--primary`, which is dark-on-green ≈ 8:1). No further token edits required.
 - Focus ring: rely on existing `--ring` token + default browser outline; the project's `button.tsx` already wires `focus-visible:ring-2 focus-visible:ring-ring`.
 
@@ -273,7 +273,7 @@ These are design contract constraints, not implementation suggestions. The check
 
 | Breakpoint | Layout |
 |------------|--------|
-| `<768px` (mobile) | Right pane full-width; left pane is a Radix Dialog drawer. Drawer trigger = lucide `Menu` icon button at the far left of the header bar. Preset chips wrap to a second row if needed (`flex-wrap`). Container-name badge truncates to `max-w-[140px]`. |
+| `<768px` (mobile) | Right pane full-width; left pane is a Radix Dialog drawer. Drawer trigger = lucide `Menu` icon button at the far left of the header bar with `aria-label="Container-Liste öffnen"`. Preset chips wrap to a second row if needed (`flex-wrap`). Container-name badge truncates to `max-w-[140px]`. |
 | `768px–1279px` (tablet) | Two-pane grid `grid-cols-[240px_1fr]` (left pane compressed to 240px; chip labels stay full). |
 | `≥1280px` (desktop) | Two-pane grid `grid-cols-[280px_1fr]` per CONTEXT.md. |
 

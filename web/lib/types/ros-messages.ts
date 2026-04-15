@@ -156,3 +156,26 @@ export interface LaserScan {
   ranges: Float32Array | number[];
   intensities: Float32Array | number[]; // may be empty
 }
+
+// nav_msgs/MapMetaData — Phase 4 Plan 04-02 (MAP-04)
+export interface MapMetaData {
+  map_load_time: { sec: number; nanosec: number };
+  resolution: number;   // m/cell — typically 0.05 for our slam_toolbox config
+  width: number;        // cells
+  height: number;       // cells
+  origin: {
+    position: Vector3;
+    orientation: Quaternion;
+  };
+}
+
+// nav_msgs/OccupancyGrid — Phase 4 Plan 04-02 (MAP-04)
+// Under CBOR rosbridge, `data` arrives as Int8Array (roslibjs typed-array decode).
+// The subscriber scrubber's ArrayBuffer.isView exemption preserves it — walking W*H
+// bytes for NaN would be a perf disaster. Int8 has no NaN; -1 is the integer-valid
+// "unknown" sentinel.
+export interface OccupancyGrid {
+  header: Header;
+  info: MapMetaData;
+  data: Int8Array | number[];
+}

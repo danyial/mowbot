@@ -52,6 +52,18 @@ export const TOPICS = {
     throttleMs: 100,    // client-side render-rate cap (D-08, P3)
   },
 
+  // Phase 4 MAP-04 — slam_toolbox OccupancyGrid.
+  // TRANSIENT_LOCAL latched publisher at ~0.5 Hz (map_update_interval: 2.0).
+  // throttle_rate + queue_length + throttleMs caps wire + callback rate to 1 Hz.
+  MAP: {
+    name: "/map",
+    messageType: "nav_msgs/OccupancyGrid",
+    compression: "cbor",
+    throttle_rate: 1000,
+    queue_length: 1,
+    throttleMs: 1000,
+  },
+
   // Published topics — no compression needed (browser publishes, doesn't subscribe)
   CMD_VEL: {
     name: "/cmd_vel",

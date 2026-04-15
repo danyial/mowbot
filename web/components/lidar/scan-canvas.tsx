@@ -772,7 +772,7 @@ function drawScan(
   // renders as small dots (not blobs) and default zoom renders as ~2 px dots.
   // Quick 260415-9ww.
   const pointSize = standalone && !projector
-    ? Math.max(2, Math.min(5, view.zoom * 0.25))
+    ? Math.max(4, Math.min(9, view.zoom * 0.4))
     : 3;
 
   // Standalone: draw a 1 px black outline ring around each viridis point so

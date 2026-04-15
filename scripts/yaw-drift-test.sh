@@ -64,7 +64,10 @@ read_yaw() {
     ros2 topic echo --once --field pose.pose.orientation ${TOPIC} 2>/dev/null |
     python3 -c '
 import sys, yaml, math
-q = yaml.safe_load(sys.stdin)
+# ros2 topic echo emits multiple YAML docs separated by --- ; take first non-empty
+q = next((d for d in yaml.safe_load_all(sys.stdin) if d), None)
+if not q:
+    sys.exit(\"no message received\")
 x, y, z, w = q[\"x\"], q[\"y\"], q[\"z\"], q[\"w\"]
 # 2D yaw from quaternion — atan2(2(wz+xy), 1-2(y²+z²))
 yaw = math.atan2(2.0*(w*z + x*y), 1.0 - 2.0*(y*y + z*z))

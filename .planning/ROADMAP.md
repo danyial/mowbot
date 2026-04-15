@@ -42,7 +42,10 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
   4. Operator applies a `since=` time window (e.g. last 5 min, last 1 h) and the stream re-backfills from that moment
   5. `/rosbridge` continues to work uninterrupted while `/logs` is open in another tab (single-upgrade-handler regression gate)
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 06-01-PLAN.md — Wave 0 test scaffolding + deps (dockerode, ansi-to-html)
+- [ ] 06-02-PLAN.md — Backend: docker-adapter, /api/logs/containers, server.mjs /logs/stream branch, docker.sock:ro mount
+- [ ] 06-03-PLAN.md — Frontend: /logs route, LogViewer, ContainerList, preset chips, nav integration, human-verify
 **UI hint**: yes
 
 ### Phase 7: SLAM Pose → EKF Yaw Fusion

@@ -859,22 +859,25 @@ test("upgrade handler dispatches both /rosbridge and /logs/stream/", () => {
 
 **Tagged `[ASSUMED]` claims elsewhere in this document:** A1, A2, A3 above. All other claims are tagged `[VERIFIED]` or `[CITED]` inline.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the current `web` image need a Dockerfile change to include dockerode?**
    - What we know: `dockerode` is pure JS + native bindings for Docker modem parsing (depends on `docker-modem`, which is pure JS). Install adds no system libs.
    - What's unclear: is the current image built via `docker/web/Dockerfile` or directly from `node:22-alpine`? A rebuild is needed either way (new `package.json` deps), but knowing the image source affects the plan's build step.
    - Recommendation: planner reads `docker/web/Dockerfile` (if present) or `web/Dockerfile` at plan time and confirms the rebuild path.
+   - **RESOLVED:** The `web` container uses `node:22-alpine` as its base; `npm install dockerode ansi-to-html` lands in the existing Dockerfile's package-install layer. Image rebuild via `docker compose build web`. No Dockerfile restructuring needed.
 
 2. **Do we need `COMPOSE_PROJECT_NAME` env var injected into the web container?**
    - What we know: `docker-compose.yml` doesn't set `COMPOSE_PROJECT_NAME` anywhere today; the default is the directory basename = `mowerbot`.
    - What's unclear: is the container-internal process aware of this? The sidecar runs inside the container and queries Docker from outside, so it must know the project name to filter.
    - Recommendation: inject `COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-mowerbot}` into the `web` service's `environment:` block. Single-line compose change.
+   - **RESOLVED:** Add `COMPOSE_PROJECT_NAME=mowerbot` to the `web` service `environment:` block in `docker-compose.yml` to guarantee the label filter matches even if the compose-invocation cwd changes. The adapter reads `process.env.MOWER_COMPOSE_LABEL` with fallback to `com.docker.compose.project=${COMPOSE_PROJECT_NAME || 'mowerbot'}`. Codified in Plan 02 Task 5.
 
 3. **Should the events subscription push to clients, or should clients poll `/api/logs/containers` on focus?**
    - What we know: CONTEXT.md specifies dockerode events for refresh, no polling fallback.
    - What's unclear: between events and browser, the transport could be SSE (new endpoint), a WS message on the existing `/logs/stream/:id` channel (but that's per-container), or just cache-invalidation → client polls on page focus.
    - Recommendation: planner's discretion per CONTEXT.md. Simplest: SSE at `/api/logs/events` that emits `{action, name}` frames. Second simplest: invalidate a server-side cache and let client `SWR`-style fetch `/api/logs/containers` on window focus + a periodic cheap ETag check.
+   - **RESOLVED:** Use SSE server-push at `/api/logs/events` that proxies the dockerode events stream (adapter `getEvents()`) to the browser. The `ContainerList` component consumes the stream via `EventSource` and applies diffs to its in-memory map. Initial hydrate remains via `GET /api/logs/containers`. **No `setInterval` polling anywhere.** Reconnect uses the same 500ms → 5000ms exponential-backoff ladder as the `/rosbridge` client. Codified in Plan 02 (new SSE endpoint task) and Plan 03 Task 1 (EventSource consumer replaces setInterval).
 
 ## Environment Availability
 

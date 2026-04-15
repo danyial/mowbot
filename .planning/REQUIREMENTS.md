@@ -17,7 +17,7 @@
 ### SLAM → EKF Yaw Fusion (FUSE)
 
 - [ ] **FUSE-01**: `robot_localization` EKF consumes `/slam_toolbox/pose` as a yaw-only `pose0` input; `imu0` yaw index is disabled simultaneously to avoid correlated-input divergence
-- [x] **FUSE-02**: Stationary yaw drift is measurably reduced — a 60-second stationary drift test on real hardware shows `<1°` yaw drift in `/odometry/filtered`
+- [ ] **FUSE-02**: Stationary yaw drift is measurably reduced — a 60-second stationary drift test on real hardware shows `<1°` yaw drift in `/odometry/filtered`
 - [ ] **FUSE-03**: Operator sees a heading-confidence badge (or equivalent indicator) in the web UI confirming that SLAM-backed yaw fusion is active and healthy
 - [ ] **FUSE-04**: Chosen covariance scaling values for `/slam_toolbox/pose` (and disabled-IMU rationale) are documented in `config/ekf.yaml` comments or an adjacent note
 
@@ -67,7 +67,7 @@
 | LOGS-03 | Phase 6 | Complete |
 | LOGS-04 | Phase 6 | Complete |
 | FUSE-01 | Phase 7 | pending |
-| FUSE-02 | Phase 7 | Complete |
+| FUSE-02 | Phase 7 | pending |
 | FUSE-03 | Phase 7 | pending |
 | FUSE-04 | Phase 7 | pending |
 | MAP-01  | Phase 8 | pending |

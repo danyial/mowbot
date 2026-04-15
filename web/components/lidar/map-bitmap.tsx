@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { useMapStore } from "@/lib/store/map-store";
-import { useImuStore } from "@/lib/store/imu-store";
 import type { ScanUnderlayTransform } from "@/components/lidar/scan-canvas";
 
 export interface MapBitmapProps {
@@ -36,16 +35,17 @@ export function MapBitmap({ transform }: MapBitmapProps) {
   const visibleRef = useRef<HTMLCanvasElement | null>(null);
   const backingRef = useRef<HTMLCanvasElement | null>(null);
   const latest = useMapStore((s) => s.latest);
-  // Quick fix (2026-04-14): render map-frame bitmap in base_link frame so it
-  // aligns with the scan (which is drawn unrotated in laser_frame ≈ base_link).
-  // v0 approximation: robot_yaw_in_map ≈ IMU yaw. Live TF probe on 260414
-  // confirmed `map→odom` is identity while EKF is IMU-only and stationary
-  // (`z=8e-17, w=1.0`), so `odom→base_link` yaw ≈ `map→base_link` yaw.
-  // When the mower starts moving (or slam_toolbox corrects `map→odom`), a v1
-  // follow-up should subscribe to /tf and use the composed `map→base_link`
-  // transform directly. Until then, this Option B rotation keeps map and scan
-  // locked together around the robot (canvas center).
-  const yawDeg = useImuStore((s) => s.yaw);
+  // Quick fix (2026-04-14, revised): render map in MAP frame (north-up, fixed).
+  // Prior attempt rotated the bitmap by -IMU yaw around canvas center to fake
+  // a base_link-frame view, but the anchor math in drawImage uses
+  // `info.origin.position` offset from canvas center — that assumes the robot
+  // sits AT the map origin, which is only true immediately post-reset. Adding
+  // rotation on top of an already-wrong anchor just spun a misplaced bitmap
+  // around the wrong pivot (Playwright probe 260414 confirmed grey "unknown"
+  // box drifted 85 px from scan centroid). Simplified approach: both scan and
+  // map live in the world/map frame, north-up, with the robot at canvas
+  // center. Scan will "spin" around the robot as it turns — bird's-eye UX,
+  // more useful for mapping than first-person.
 
   // Repaint backing on new OccupancyGrid identity (the expensive O(W*H) step).
   useEffect(() => {
@@ -79,10 +79,12 @@ export function MapBitmap({ transform }: MapBitmapProps) {
     if (!bctx) return;
 
     const img = bctx.createImageData(info.width, info.height);
-    // Nav2/rviz-style greyscale colormap:
-    //   v < 0 unknown  -> RGB 96 (alpha 180 so it dims against black bg)
-    //   v == 0 free    -> RGB 240
-    //   v >= 65 occ    -> RGB 20
+    // Nav2/rviz-style greyscale colormap — unknown cells now FULLY TRANSPARENT
+    // so the page's black background shows through (no more grey rectangular
+    // "box" overwhelming the scan). Free/occupied cells stay opaque.
+    //   v < 0 unknown  -> alpha 0 (invisible)
+    //   v == 0 free    -> RGB 240 (light)
+    //   v >= 65 occ    -> RGB 20  (dark)
     //   middle         -> linear ramp ~200 - v*1.8
     for (let i = 0; i < data.length; i++) {
       const v = data[i];
@@ -91,8 +93,8 @@ export function MapBitmap({ transform }: MapBitmapProps) {
         b = 96,
         a = 255;
       if (v < 0) {
-        r = g = b = 96;
-        a = 180;
+        r = g = b = 0;
+        a = 0;
       } else if (v === 0) {
         r = g = b = 240;
       } else if (v >= 65) {
@@ -122,7 +124,9 @@ export function MapBitmap({ transform }: MapBitmapProps) {
     if (canvas.height !== transform.canvasHeight)
       canvas.height = transform.canvasHeight;
 
-    const ctx = canvas.getContext("2d");
+    // willReadFrequently silences the Playwright/Chromium warning we hit when
+    // probes call getImageData() on this canvas. Small perf polish.
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -144,21 +148,14 @@ export function MapBitmap({ transform }: MapBitmapProps) {
     const dx = cx + info.origin.position.x * pxPerMeter;
     const dy = cy - (info.origin.position.y * pxPerMeter + dh);
 
-    // v0 base_link-frame render: rotate the whole map around the canvas center
-    // (which is where the robot is drawn by ScanCanvas) by -yaw, so the map
-    // spins as the IMU yaw drifts while scan stays facing "up-right" (laser
-    // +x = canvas +x) — keeping the two visually locked on a stationary mower.
-    // Negated because canvas +y is south: a ROS-CCW yaw rotates the world
-    // clockwise on screen if we want the map's frame to follow base_link.
-    const yawRad = (yawDeg * Math.PI) / 180;
+    // Map-frame render (no rotation). Scan (also drawn unrotated by
+    // ScanCanvas) lives in laser_frame = base_link ≈ map frame for a freshly
+    // reset SLAM map with the robot near the map origin. Both render
+    // north-up, world-fixed — the robot marker (drawn by ScanCanvas) is the
+    // anchor at canvas center.
     ctx.imageSmoothingEnabled = false;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-yawRad);
-    ctx.translate(-cx, -cy);
     ctx.drawImage(backing, dx, dy, dw, dh);
-    ctx.restore();
-  }, [latest, transform, yawDeg]);
+  }, [latest, transform]);
 
   return (
     <canvas

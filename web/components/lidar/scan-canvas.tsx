@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Eraser } from "lucide-react";
 import { useScanStore } from "@/lib/store/scan-store";
 import { useMapStore } from "@/lib/store/map-store";
+import { useImuStore } from "@/lib/store/imu-store";
 import { callSlamReset } from "@/lib/ros/services";
 import { sampleViridis } from "@/lib/viridis";
 
@@ -185,6 +186,9 @@ export function ScanCanvas({
   // Store selectors.
   const latest = useScanStore((s) => s.latest);
   const isStale = useScanStore((s) => s.isStale);
+  // Standalone-only: IMU yaw (deg) drives the robot heading tick. Value is
+  // read at draw time from useImuStore so we repaint when it changes.
+  const yawDeg = useImuStore((s) => s.yaw);
 
   // ── Memoized polar→cartesian (NaN-safe, preserves typed-array semantics) ──
   const cartesian = useMemo<ScanCartesian | null>(() => {
@@ -512,11 +516,12 @@ export function ScanCanvas({
         cartesian,
         projector,
         standalone ? viewRef.current : IDENTITY_VIEW,
-        standalone
+        standalone,
+        yawDeg
       );
       rafRef.current = null;
     });
-  }, [cartesian, projector, standalone, viewTick]);
+  }, [cartesian, projector, standalone, viewTick, yawDeg]);
 
   // Zoom-control handlers (standalone only).
   const zoomBy = (factor: number) => {
@@ -722,9 +727,12 @@ function drawScan(
   cart: ScanCartesian,
   projector: ScanProjector | undefined,
   view: ViewTransform,
-  standalone: boolean
+  standalone: boolean,
+  yawDeg: number
 ) {
-  const ctx = canvas.getContext("2d");
+  // willReadFrequently: Playwright/probe-friendly, also cheap when we don't
+  // actually read back. Quick 260414-restore.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return;
 
   const w = canvas.width;
@@ -767,6 +775,13 @@ function drawScan(
     ? Math.max(2, Math.min(5, view.zoom * 0.25))
     : 3;
 
+  // Standalone: draw a 1 px black outline ring around each viridis point so
+  // the light-violet floor-remapped near-range dots stay readable against the
+  // black page background. Anchored mode skips this (OSM tiles are already
+  // bright enough that the viridis color is visible on its own).
+  // Quick 260414-restore.
+  const drawOutline = standalone && !projector;
+
   for (let i = 0; i < count; i++) {
     const xR = xyr[i * 3 + 0];
     const yR = xyr[i * 3 + 1];
@@ -786,6 +801,15 @@ function drawScan(
         ? VIRIDIS_FLOOR_STANDALONE + Math.max(0, Math.min(1, t)) * (1 - VIRIDIS_FLOOR_STANDALONE)
         : t;
     sampleViridis(lutT, rgb, 0);
+    if (drawOutline) {
+      ctx.fillStyle = "rgb(0, 0, 0)";
+      ctx.fillRect(
+        p.px - pointSize / 2 - 1,
+        p.py - pointSize / 2 - 1,
+        pointSize + 2,
+        pointSize + 2
+      );
+    }
     ctx.fillStyle = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
     ctx.fillRect(
       p.px - pointSize / 2,
@@ -793,5 +817,40 @@ function drawScan(
       pointSize,
       pointSize
     );
+  }
+
+  // Robot marker — standalone only, drawn LAST so it sits on top of scan +
+  // map. 8 px filled blue circle with a white 2 px border and a 12 px
+  // heading-tick line from center in the +x direction of base_link (IMU
+  // yaw). The marker stays at canvas center (the anchor for everything
+  // else) — pan shifts it with the world via view.panX/Y.
+  // Quick 260414-restore.
+  if (standalone && !projector) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const mcx = w / 2 + view.panX;
+    const mcy = h / 2 + view.panY;
+
+    // Heading tick. ROS yaw is CCW-positive in the x-forward/y-left body
+    // frame; canvas +y is south, so we negate sin to flip the screen y-axis.
+    const yawRad = (yawDeg * Math.PI) / 180;
+    const tickLen = 12;
+    const tx = mcx + Math.cos(yawRad) * tickLen;
+    const ty = mcy - Math.sin(yawRad) * tickLen;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(mcx, mcy);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // Filled blue disc with white border.
+    ctx.beginPath();
+    ctx.arc(mcx, mcy, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(59, 130, 246, 0.9)";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.stroke();
   }
 }

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 test("docker-adapter exports ONLY listContainers, getContainer, getEvents (allowlist)", async () => {
   // Import path after Plan 02 lands. Until then this throws ENOENT → RED → correct.
-  const mod = await import("../lib/server/docker-adapter.js");
+  const mod = await import("../lib/server/docker-adapter.mjs");
   const keys = new Set(Object.keys(mod));
   assert.deepEqual(
     keys,
@@ -13,7 +13,7 @@ test("docker-adapter exports ONLY listContainers, getContainer, getEvents (allow
 });
 
 test("getContainer facade exposes ONLY inspect, logs, modem", async () => {
-  const mod = await import("../lib/server/docker-adapter.js");
+  const mod = await import("../lib/server/docker-adapter.mjs");
   const facade = mod.getContainer("fake-id");
   const keys = Object.keys(facade).sort();
   assert.deepEqual(

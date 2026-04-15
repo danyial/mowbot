@@ -20,6 +20,17 @@ export const TOPICS = {
     compression: "cbor",
     throttleMs: 100, // 10 Hz
   },
+  // Phase 7 FUSE-03 — slam_toolbox publishes its scan-matched pose on `/pose`
+  // (NOT `/slam_toolbox/pose` as CONTEXT.md implied; confirmed live by Plan 07-02
+  // preflight: 1 publisher / 1 subscriber on /pose, type PoseWithCovarianceStamped).
+  // 10 Hz is sufficient for the 500ms staleness threshold (D-11); slam_toolbox only
+  // publishes after successful scan-matches anyway, so throttle is rarely tight.
+  POSE: {
+    name: "/pose",
+    messageType: "geometry_msgs/PoseWithCovarianceStamped",
+    compression: "cbor",
+    throttleMs: 100, // 10 Hz
+  },
   BATTERY: {
     name: "/battery_voltage",
     messageType: "std_msgs/Float32",

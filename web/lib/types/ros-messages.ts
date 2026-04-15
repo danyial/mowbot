@@ -69,6 +69,19 @@ export interface Odometry {
   };
 }
 
+// geometry_msgs/PoseWithCovarianceStamped — Phase 7 FUSE-03 (/pose from slam_toolbox)
+// 6x6 row-major covariance: [x, y, z, roll, pitch, yaw] × same — yaw-yaw entry is index 35 (5*6+5).
+export interface PoseWithCovarianceStamped {
+  header: Header;
+  pose: {
+    pose: {
+      position: Vector3;
+      orientation: Quaternion;
+    };
+    covariance: number[]; // 36 elements, 6x6 row-major
+  };
+}
+
 // std_msgs/Float32
 export interface Float32 {
   data: number;

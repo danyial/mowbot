@@ -59,7 +59,10 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
   4. Exactly one node publishes the `map→odom` transform (slam_toolbox); no TF cycle or duplicate publisher is present
   5. Chosen covariance scaling for `/slam_toolbox/pose` and the rationale for disabling IMU yaw are documented in `config/ekf.yaml` comments (or an adjacent note)
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 07-01-PLAN.md — Wave 0: yaw-drift-test.sh + runtime pre-flight (topic name + native covariance)
+- [ ] 07-02-PLAN.md — Wave 1: ekf.yaml pose0/imu0 simultaneity + slam_toolbox yaw_covariance_scale + FUSE-04 ADR comment + drift-test tuning loop
+- [ ] 07-03-PLAN.md — Wave 2: /pose topic registration + slam-pose-store + 3-state yaw badge in header.tsx
 **UI hint**: yes
 
 ### Phase 8: `/lidar` Map-Anchor + Persistence + Honest Reset

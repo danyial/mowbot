@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "MowerBot") (type "KiCad") (uri "${KIPRJMOD}/MowerBot.pretty") (options "") (descr ""))
+)

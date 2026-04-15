@@ -1,0 +1,283 @@
+(footprint "MINI560"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "MINI560 Step-Down Module 5-20V to 5V/5A, 30x18mm, THT Pin Headers")
+	(tags "MINI560 step-down buck converter module")
+	(property "Reference" "U2"
+		(at 0 -16 0)
+		(layer "F.SilkS")
+		(uuid "320bcf0e-605b-4175-84e1-5cabaf0b7f53")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "MINI560"
+		(at 0 16 0)
+		(layer "F.Fab")
+		(uuid "c59fff71-9614-424a-8282-d510e4c88dd2")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "d914833e-85a9-4bdc-b7ef-1932dd2538a6")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" "MINI560 Step-Down Module, 5-20V to 5V/5A"
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "9a5f1793-ccca-4738-8853-e4914136d21a")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr through_hole)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_rect
+		(start -9 -15)
+		(end 9 15)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "ad9d4b01-c91a-4085-a116-420e6c83f4cb")
+	)
+	(fp_rect
+		(start -9.5 -15.5)
+		(end 9.5 15.5)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "051c5219-5a58-47de-b81b-ae4796480fa5")
+	)
+	(fp_rect
+		(start -9 -15)
+		(end 9 15)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "5dc81fc6-e967-4534-bff1-32d69e53cb53")
+	)
+	(fp_text user "EN"
+		(at -7.5 -4 90)
+		(layer "F.SilkS")
+		(uuid "88a05ba2-3e80-4598-b0f8-ed1ad3bc0f73")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "IN-"
+		(at -5.73 -14 0)
+		(layer "F.SilkS")
+		(uuid "368643b5-88a7-4e57-b1e7-5fdd9cf0a04c")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "OUT-"
+		(at -5.73 14 0)
+		(layer "F.SilkS")
+		(uuid "359b7c68-77fb-4679-b972-8daea032c116")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "IN+"
+		(at 5.73 -14 0)
+		(layer "F.SilkS")
+		(uuid "c7e674a9-c20c-44c4-b9bc-b22ed40aa3a2")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "OUT+"
+		(at 5.73 14 0)
+		(layer "F.SilkS")
+		(uuid "510475c1-fd61-4508-b872-b16d64ecf8e2")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "-"
+		(at -5.73 -12 0)
+		(layer "F.Fab")
+		(uuid "b0062671-f257-4f87-84f3-bf4a32084049")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "-"
+		(at -5.73 12 0)
+		(layer "F.Fab")
+		(uuid "f9a35e75-7321-4a81-b67d-570ef4fd1169")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "91a6c705-92c4-45d5-bad5-958e721fe03d")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "+"
+		(at 5.73 -12 0)
+		(layer "F.Fab")
+		(uuid "69d75dc0-d58a-4fda-9a5b-0631da1ae2c5")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "+"
+		(at 5.73 12 0)
+		(layer "F.Fab")
+		(uuid "2fe65469-afe0-40d0-a52c-f8aa3132e811")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole circle
+		(at 4.46 -13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "0fdbd91e-60a6-4de5-8a72-30c0019efb84")
+	)
+	(pad "1" thru_hole circle
+		(at 7 -13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "028f3659-ef27-4e64-b448-a9d49377565f")
+	)
+	(pad "2" thru_hole circle
+		(at -7 -13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "4f712ca2-66db-4644-b6f1-179eaac2cd5e")
+	)
+	(pad "2" thru_hole circle
+		(at -4.46 -13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "17f070ac-18b1-4939-8d32-d3769f557917")
+	)
+	(pad "3" thru_hole circle
+		(at 4.46 13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "a9b84674-457b-47a4-ab12-f48bc710ecb7")
+	)
+	(pad "3" thru_hole circle
+		(at 7 13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "60ea98ee-2a3d-411b-8384-925c28289bf1")
+	)
+	(pad "4" thru_hole circle
+		(at -7 13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "065d14fd-ed55-4541-9e50-321fa5094255")
+	)
+	(pad "4" thru_hole circle
+		(at -4.46 13)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "234fcefb-b2e2-4e53-8ead-b09da1d98382")
+	)
+	(pad "5" thru_hole circle
+		(at -7.925 -5.4)
+		(size 1.4 1.4)
+		(drill 0.8)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "2b1daddc-868e-4740-aeb5-205d8a8f2739")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/MINI560.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

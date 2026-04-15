@@ -1,0 +1,186 @@
+=== scp web/lib/types/ros-messages.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/lib/ros/topics.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/lib/ros/services.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/lib/store/map-store.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+Permission denied, please try again.
+Permission denied, please try again.
+pi@10.10.40.23: Permission denied (publickey,password).
+scp: Connection closed
+=== scp web/lib/store/ros-store.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/components/lidar/scan-canvas.tsx ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/components/lidar/map-bitmap.tsx ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp web/app/lidar/page.tsx ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== scp RETRY web/lib/store/map-store.ts ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+-rw-r--r-- 1 pi pi 5140 Apr 15 09:14 /home/pi/mowbot/web/components/lidar/map-bitmap.tsx
+-rw-r--r-- 1 pi pi 1111 Apr 15 09:14 /home/pi/mowbot/web/lib/ros/services.ts
+-rw-r--r-- 1 pi pi  931 Apr 15 09:15 /home/pi/mowbot/web/lib/store/map-store.ts
+=== docker compose build web + up -d web ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+time="2026-04-15T09:15:15+02:00" level=warning msg="No services to build"
+ Container mower-rosbridge Running 
+ Container mower-web Running 
+=== docker compose -f ... build web + up -d web ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+ Image ghcr.io/danyial/mowbot/web:latest Building 
+ Image ghcr.io/danyial/mowbot/rosbridge:latest Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.00kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.02kB 0.0s done
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/node:22-alpine
+#3 DONE 1.2s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 98B 0.0s done
+#4 DONE 0.1s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [builder 1/6] FROM docker.io/library/node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3
+#6 resolve docker.io/library/node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3
+#6 resolve docker.io/library/node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 0.2s done
+#6 DONE 0.2s
+
+#5 [internal] load build context
+#5 transferring context: 57.03kB 0.2s done
+#5 DONE 0.2s
+
+#7 [builder 2/6] WORKDIR /app
+#7 CACHED
+
+#8 [builder 3/6] COPY package*.json ./
+#8 CACHED
+
+#9 [builder 4/6] RUN npm ci
+#9 CACHED
+
+#10 [builder 5/6] COPY . .
+#10 DONE 0.8s
+
+#11 [builder 6/6] RUN npm run build
+#11 5.005 
+#11 5.005 > mower-control@0.1.0 build
+#11 5.005 > next build
+#11 5.005 
+#11 8.973 Attention: Next.js now collects completely anonymous telemetry regarding usage.
+#11 8.976 This information is used to shape Next.js' roadmap and prioritize features.
+#11 8.976 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+#11 8.976 https://nextjs.org/telemetry
+#11 8.979 
+#11 10.46 ▲ Next.js 16.2.1 (Turbopack)
+#11 10.47 
+#11 10.88   Creating an optimized production build ...
+#11 66.89 Turbopack build encountered 1 warnings:
+#11 66.89 ./next.config.mjs
+#11 66.89 Encountered unexpected file in NFT list
+#11 66.89 A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+#11 66.89 - filesystem operations (like path.join, path.resolve or fs.readFile), or
+#11 66.89 - very dynamic requires (like require('./' + foo)).
+#11 66.89 To resolve this, you can
+#11 66.89 - remove them if possible, or
+#11 66.89 - only use them in development, or
+#11 66.89 - make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+#11 66.89 - add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+#11 66.89 
+#11 66.89 Import trace:
+#11 66.89   App Route:
+#11 66.89     ./next.config.mjs
+#11 66.89     ./app/api/ntrip/route.ts
+#11 66.89 
+#11 66.89 
+#11 67.05 ✓ Compiled successfully in 54s
+#11 67.20   Running TypeScript ...
+#11 117.9   Finished TypeScript in 51s ...
+#11 118.0   Collecting page data using 3 workers ...
+#11 123.6   Generating static pages using 3 workers (0/16) ...
+#11 123.9   Generating static pages using 3 workers (4/16) 
+#11 125.2   Generating static pages using 3 workers (8/16) 
+#11 126.4   Generating static pages using 3 workers (12/16) 
+#11 126.4 ✓ Generating static pages using 3 workers (16/16) in 2.8s
+#11 126.4   Finalizing page optimization ...
+#11 131.0 
+#11 131.0 Route (app)
+#11 131.0 ┌ ○ /
+#11 131.0 ├ ○ /_not-found
+#11 131.0 ├ ƒ /api/config
+#11 131.0 ├ ƒ /api/garden
+#11 131.0 ├ ƒ /api/missions
+#11 131.0 ├ ƒ /api/missions/plan
+#11 131.0 ├ ƒ /api/missions/replan
+#11 131.0 ├ ƒ /api/ntrip
+#11 131.0 ├ ƒ /api/zones
+#11 131.0 ├ ○ /lidar
+#11 131.0 ├ ○ /map
+#11 131.0 ├ ○ /missions
+#11 131.0 ├ ○ /settings
+#11 131.0 └ ○ /teleop
+#11 131.0 
+#11 131.0 
+#11 131.0 ○  (Static)   prerendered as static content
+#11 131.0 ƒ  (Dynamic)  server-rendered on demand
+#11 131.0 
+#11 DONE 132.1s
+
+#12 [runner  3/10] RUN apk add --no-cache curl
+#12 CACHED
+
+#13 [runner  4/10] COPY --from=builder /app/.next/standalone ./
+#13 DONE 4.2s
+
+#14 [runner  5/10] COPY --from=builder /app/.next/static ./.next/static
+#14 DONE 0.6s
+
+#15 [runner  6/10] COPY --from=builder /app/public ./public
+#15 DONE 0.3s
+
+#16 [runner  7/10] COPY --from=builder /app/server.mjs ./server.mjs
+#16 DONE 0.3s
+
+#17 [runner  8/10] COPY --from=builder /app/node_modules/next ./node_modules/next
+#17 DONE 16.3s
+
+#18 [runner  9/10] COPY --from=builder /app/node_modules/@next ./node_modules/@next
+#18 DONE 13.9s
+
+#19 [runner 10/10] COPY --from=builder /app/node_modules/ws ./node_modules/ws
+#19 DONE 0.3s
+
+#20 exporting to image
+#20 exporting layers
+#20 exporting layers 65.0s done
+#20 exporting manifest sha256:3e9cd21fd03f148afc1c2a3cded05dc45d54d601976e2bda918fad7856ad612c 0.1s done
+#20 exporting config sha256:62fe6f698d12a83ad1494efea5219f5f4b618a2aa085d2a267803b59d6217865
+#20 exporting config sha256:62fe6f698d12a83ad1494efea5219f5f4b618a2aa085d2a267803b59d6217865 0.1s done
+#20 exporting attestation manifest sha256:d9c2a6ba46857c4e63960117e3d2b0b3589c642530dd40b6a37d481059617619
+#20 exporting attestation manifest sha256:d9c2a6ba46857c4e63960117e3d2b0b3589c642530dd40b6a37d481059617619 0.1s done
+#20 exporting manifest list sha256:a4aa5a4dcb2e430f8355b88c2ba676ea22ee6f7447088a1fb27c8fb4b6de9f5d 0.1s done
+#20 naming to ghcr.io/danyial/mowbot/web:latest 0.0s done
+#20 unpacking to ghcr.io/danyial/mowbot/web:latest
+#20 unpacking to ghcr.io/danyial/mowbot/web:latest 36.3s done
+#20 DONE 102.3s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.3s
+ Image ghcr.io/danyial/mowbot/web:latest Built 
+ Container mower-rosbridge Running 
+ Container mower-web Recreate 
+ Container mower-web Recreated 
+ Container mower-web Starting 
+ Container mower-web Started 
+/lidar 200
+/map 200

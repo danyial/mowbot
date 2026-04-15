@@ -1,7 +1,11 @@
 "use client";
 
+import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Eraser } from "lucide-react";
 import { useScanStore } from "@/lib/store/scan-store";
+import { useMapStore } from "@/lib/store/map-store";
+import { callSlamReset } from "@/lib/ros/services";
 import { sampleViridis } from "@/lib/viridis";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,6 +80,20 @@ export type ScanProjector = (
   yMeters: number
 ) => { px: number; py: number } | null;
 
+/**
+ * Phase 4 Plan 04-02 — view transform handed to the standalone `underlay`
+ * render-prop. `pxPerMeter` already includes the current viewRef.zoom
+ * multiplier so the underlay consumer (MapBitmap) uses IDENTICAL math to
+ * the scan projector — zoom/pan "just works" without a shared view-store.
+ */
+export interface ScanUnderlayTransform {
+  pxPerMeter: number;
+  panX: number;
+  panY: number;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
 export interface ScanCanvasProps {
   /**
    * Anchored mode — when provided, the component mounts its canvas imperatively
@@ -102,6 +120,15 @@ export interface ScanCanvasProps {
    * Standalone mode — applied to the wrapper `<div>` (e.g. "h-full w-full bg-black").
    */
   className?: string;
+
+  /**
+   * Standalone mode only — render function returning JSX to layer UNDER the
+   * scan canvas. Called on every redraw with the current view transform.
+   * Ignored in anchored (Leaflet) mode — scan-overlay.tsx does not pass this,
+   * so `/map` is literally unaffected (no shared view state, no hook changes
+   * in the anchored branch). See Plan 04-02 Blocker #1 Option 2.
+   */
+  underlay?: (t: ScanUnderlayTransform) => React.ReactNode;
 }
 
 interface ViewTransform {
@@ -132,6 +159,7 @@ export function ScanCanvas({
   projector,
   mountTarget,
   className,
+  underlay,
 }: ScanCanvasProps) {
   // Mode is determined by whether the caller supplied a mountTarget (anchored
   // into an external container like Leaflet's map) vs. managing our own
@@ -510,6 +538,35 @@ export function ScanCanvas({
     bumpView();
   };
 
+  // Plan 04-02: derive the underlay transform each render using the same math
+  // as drawScan()'s standalone projector, so MapBitmap composes UNDER scan
+  // points with identical scale/pan/zoom. `canvasRef.current` is populated by
+  // the DOM-mount effect; on first render it may be null — the underlay simply
+  // doesn't render until a tick (no perf issue, same scan-first latency).
+  const currentTransform = useMemo<ScanUnderlayTransform | null>(() => {
+    if (!standalone) return null;
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const w = canvas.width;
+    const h = canvas.height;
+    if (w <= 0 || h <= 0) return null;
+    const fit = Math.min(w, h) * STANDALONE_FIT_FACTOR;
+    const rawMax = cartesian?.rmax || EFFECTIVE_RANGE_M;
+    const effMax = Math.min(EFFECTIVE_RANGE_M, rawMax || EFFECTIVE_RANGE_M);
+    const base = fit / (effMax || 1);
+    const v = viewRef.current;
+    return {
+      pxPerMeter: base * v.zoom,
+      panX: v.panX,
+      panY: v.panY,
+      canvasWidth: w,
+      canvasHeight: h,
+    };
+    // viewTick / cartesian / standalone trigger recompute. viewRef.current is
+    // mutated in place so viewTick is the actual change signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewTick, cartesian, standalone]);
+
   // Anchored mode renders nothing — DOM lives inside the map container.
   if (!standalone) return null;
 
@@ -519,6 +576,62 @@ export function ScanCanvas({
       className={className}
       style={{ position: "relative", overflow: "hidden" }}
     >
+      {/* Plan 04-02 — standalone-only underlay slot (zIndex 300 < canvas 400).
+          /map's scan-overlay never passes `underlay`, so nothing renders here
+          in anchored mode. pointerEvents: none so zoom/pan still hit canvas. */}
+      {underlay && currentTransform ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 300,
+            pointerEvents: "none",
+          }}
+        >
+          {underlay(currentTransform)}
+        </div>
+      ) : null}
+
+      {/* Plan 04-02 — Reset button (bottom-right). Clears useMapStore
+          optimistically so the bitmap wipes within the P3 2 s assertion
+          window even before the next /map publish, then invokes the
+          /slam_toolbox/reset service. Does NOT touch viewRef — non-interference
+          invariant with ⌂ (P3.1). */}
+      <button
+        type="button"
+        onClick={async () => {
+          // Optimistic clear — removing this breaks P3's "within 2 s"
+          // assertion because MapBitmap would wait for the next /map
+          // publish (up to map_update_interval = 2 s).
+          useMapStore.getState().clear();
+          try {
+            await callSlamReset();
+          } catch (e) {
+            console.error("[lidar] /slam_toolbox/reset failed:", e);
+          }
+        }}
+        title="Reset map"
+        aria-label="Reset map"
+        style={{
+          position: "absolute",
+          right: 8,
+          bottom: 8,
+          zIndex: 600,
+          width: 32,
+          height: 32,
+          borderRadius: 6,
+          background: "rgba(0,0,0,0.6)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.2)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Eraser size={16} />
+      </button>
+
       {/* Zoom controls — bottom-left, pointer-events enabled so they overlay
           the interactive canvas without the canvas eating the clicks. */}
       <div

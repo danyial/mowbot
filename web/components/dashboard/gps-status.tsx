@@ -56,6 +56,44 @@ function formatAge(ms: number): string {
   return `${(ms / 60_000).toFixed(1)} min`;
 }
 
+/**
+ * GPS-Qualität als %. Fix-Typ setzt die obere Grenze (kann nicht >90% ohne RTK Fix);
+ * die horizontale Genauigkeit moduliert innerhalb der Stufe. Stale Fix → 0%.
+ */
+function computeQuality(
+  fixStatus: string,
+  accuracyM: number,
+  isStale: boolean
+): { percent: number; color: string } {
+  if (isStale || fixStatus === "no_fix") return { percent: 0, color: "text-red-500" };
+
+  // Tier-Obergrenzen nach Fix-Typ
+  const tier: Record<string, { base: number; ceiling: number; refCm: number }> = {
+    autonomous: { base: 10, ceiling: 30, refCm: 500 },   // ~5 m typisch
+    dgps:       { base: 30, ceiling: 55, refCm: 100 },   // ~1 m typisch
+    rtk_float:  { base: 55, ceiling: 90, refCm: 10 },    // ~10 cm typisch → 90%
+    rtk_fixed:  { base: 85, ceiling: 100, refCm: 2 },    // ~2 cm typisch → 100%
+  };
+  const t = tier[fixStatus] ?? tier.autonomous;
+
+  if (accuracyM < 0) return { percent: t.base, color: "text-yellow-500" };
+
+  const cm = accuracyM * 100;
+  // Linear zwischen ceiling (bei refCm) und base (bei refCm*5); ausserhalb geklemmt.
+  const span = t.ceiling - t.base;
+  const ratio = Math.max(0, Math.min(1, 1 - (cm - t.refCm) / (t.refCm * 4)));
+  const percent = Math.round(t.base + span * ratio);
+
+  const color =
+    percent >= 90 ? "text-green-500" :
+    percent >= 70 ? "text-lime-500" :
+    percent >= 50 ? "text-yellow-500" :
+    percent >= 25 ? "text-orange-500" :
+                    "text-red-500";
+
+  return { percent, color };
+}
+
 export function GpsStatus() {
   const {
     latitude,
@@ -84,6 +122,7 @@ export function GpsStatus() {
   const accV = formatAccuracy(verticalAccuracy);
   const acc2H = formatAccuracy(accuracy > 0 ? accuracy * 2 : -1);
   const acc2V = formatAccuracy(verticalAccuracy > 0 ? verticalAccuracy * 2 : -1);
+  const quality = computeQuality(fixStatus, accuracy, isStale || lastUpdate === 0);
 
   return (
     <StatusCard
@@ -96,8 +135,8 @@ export function GpsStatus() {
           <Badge variant={fixBadgeVariant[fixStatus] || "secondary"}>
             {fixLabels[fixStatus] || "Unknown"}
           </Badge>
-          <span className="text-xs text-slate-400 font-mono">
-            status={fixStatusCode} ({fixCodeLabels[fixStatusCode] || "?"})
+          <span className={`text-sm font-semibold tabular-nums ${quality.color}`}>
+            {quality.percent}%
           </span>
         </div>
 
@@ -172,13 +211,25 @@ export function GpsStatus() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
+                label="Fix-Status"
+                value={`${fixStatusCode} (${fixCodeLabels[fixStatusCode] || "?"})`}
+              />
+              <ValueDisplay
                 label="Cov-Typ"
                 value={covTypeLabels[covarianceType] || "?"}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
                 label="Alter"
                 value={ageMs < 0 ? "--" : formatAge(ageMs)}
                 valueClassName={isStale ? "text-yellow-500" : undefined}
+              />
+              <ValueDisplay
+                label="Qualität"
+                value={`${quality.percent}`}
+                unit="%"
+                valueClassName={quality.color}
               />
             </div>
           </div>

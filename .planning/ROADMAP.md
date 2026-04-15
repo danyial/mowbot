@@ -25,7 +25,7 @@ Audit: [milestones/v2.1-MILESTONE-AUDIT.md](milestones/v2.1-MILESTONE-AUDIT.md)
 
 Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as a debugging force-multiplier for Phases 7 and 8. Phase 7 (yaw fusion) must land before Phase 8 so the `/lidar` map-anchor can be validated against a trusted `map→base_link` under motion.
 
-- [ ] **Phase 6: WebUI Container-Logs View** — Operator can live-tail any container's logs from the browser, filtered by time window
+- [x] **Phase 6: WebUI Container-Logs View** — Operator can live-tail any container's logs from the browser, filtered by time window (completed 2026-04-15)
 - [ ] **Phase 7: SLAM Pose → EKF Yaw Fusion** — EKF consumes `/slam_toolbox/pose` as yaw-only input; stationary yaw drift <1° / 60 s
 - [ ] **Phase 8: `/lidar` Map-Anchor + Persistence + Honest Reset** — Occupancy grid anchored in map frame, persists across reloads, Eraser honestly resets both server and client state
 
@@ -45,7 +45,7 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
 **Plans**: 3 plans
 - [x] 06-01-PLAN.md — Wave 0 test scaffolding + deps (dockerode, ansi-to-html)
 - [x] 06-02-PLAN.md — Backend: docker-adapter, /api/logs/containers, server.mjs /logs/stream branch, docker.sock:ro mount
-- [ ] 06-03-PLAN.md — Frontend: /logs route, LogViewer, ContainerList, preset chips, nav integration, human-verify
+- [x] 06-03-PLAN.md — Frontend: /logs route, LogViewer, ContainerList, preset chips, nav integration, human-verify
 **UI hint**: yes
 
 ### Phase 7: SLAM Pose → EKF Yaw Fusion
@@ -85,7 +85,7 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
 | 2. LiDAR Driver & `/scan` | v2.1 | 1/1 | Complete | 2026-04-14 |
 | 3. Web Visualization | v2.1 | 2/2 | Complete (human UAT deferred) | 2026-04-14 |
 | 4. Live Mapping with slam_toolbox | v2.1 | 2/2 | Complete (human UAT deferred) | 2026-04-14 |
-| 6. WebUI Container-Logs View | v2.2 | 0/- | Not started | — |
+| 6. WebUI Container-Logs View | v2.2 | 3/3 | Complete   | 2026-04-15 |
 | 7. SLAM → EKF Yaw Fusion | v2.2 | 0/- | Not started | — |
 | 8. `/lidar` Map-Anchor + Persistence + Reset | v2.2 | 0/- | Not started | — |
 

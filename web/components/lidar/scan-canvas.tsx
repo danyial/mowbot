@@ -6,6 +6,7 @@ import { Eraser } from "lucide-react";
 import { useScanStore } from "@/lib/store/scan-store";
 import { useMapStore } from "@/lib/store/map-store";
 import { useImuStore } from "@/lib/store/imu-store";
+import { useTfStore } from "@/lib/store/tf-store";
 import { callSlamReset } from "@/lib/ros/services";
 import { sampleViridis } from "@/lib/viridis";
 
@@ -138,7 +139,17 @@ interface ViewTransform {
   panY: number;
 }
 
-const IDENTITY_VIEW: ViewTransform = { zoom: 1, panX: 0, panY: 0 };
+// Default zoom lifted to 3.0× per user request (was 1.0 = fit-to-15 m, which
+// put near-field detail too small on load). The "⌂ Reset view" button
+// restores this same value so reset behavior matches the "home" feel.
+// Anchored (/map) mode ignores this — it uses its own IDENTITY via
+// IDENTITY_VIEW_ANCHORED below. Quick 260415-tf-align.
+const DEFAULT_STANDALONE_ZOOM = 3.0;
+const IDENTITY_VIEW: ViewTransform = { zoom: DEFAULT_STANDALONE_ZOOM, panX: 0, panY: 0 };
+
+// Anchored mode always draws at native map scale (projector already bakes
+// its own px/m). Keep this at zoom=1 so /map is literally unaffected.
+const IDENTITY_VIEW_ANCHORED: ViewTransform = { zoom: 1, panX: 0, panY: 0 };
 
 /**
  * Phase 3 / Quick 260414-w8p.
@@ -186,9 +197,44 @@ export function ScanCanvas({
   // Store selectors.
   const latest = useScanStore((s) => s.latest);
   const isStale = useScanStore((s) => s.isStale);
-  // Standalone-only: IMU yaw (deg) drives the robot heading tick. Value is
-  // read at draw time from useImuStore so we repaint when it changes.
+  // Standalone-only: IMU yaw (deg) is the FALLBACK heading source for the
+  // robot marker tick + scan rotation when TF is missing or stale. Primary
+  // source is the TF store's composed map→base_link yaw (radians).
+  // Quick 260415-tf-align.
   const yawDeg = useImuStore((s) => s.yaw);
+  // Subscribe to the TF tick so we recompute the composed yaw on every /tf
+  // burst; the selector pulls the actual composed value via mapToBaseLinkYaw().
+  const tfTick = useTfStore((s) => s.tick);
+  // Composed map→base_link yaw (radians), or null when TF is unavailable or
+  // stale. In that case we fall back to IMU yaw (see scanYawRad below).
+  const mapToBaseYaw = useMemo(() => {
+    // Tick is in the dep list so this recomputes when TF updates.
+    void tfTick;
+    return useTfStore.getState().mapToBaseLinkYaw();
+  }, [tfTick]);
+  // Effective yaw used for BOTH scan rotation and the robot heading tick in
+  // standalone mode. TF when available, IMU yaw otherwise. Anchored (/map)
+  // mode passes the scan through the supplied projector and never applies
+  // this — anchored rendering is unchanged.
+  const scanYawRad = useMemo(() => {
+    if (mapToBaseYaw !== null) return mapToBaseYaw;
+    // Fallback: IMU yaw (degrees → radians).
+    return (yawDeg * Math.PI) / 180;
+  }, [mapToBaseYaw, yawDeg]);
+  // One-shot warning when TF drops out — useful for field diagnostics without
+  // spamming the console each frame.
+  const tfWarnedRef = useRef(false);
+  useEffect(() => {
+    if (mapToBaseYaw === null && !tfWarnedRef.current) {
+      tfWarnedRef.current = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[lidar] TF map→base_link unavailable or stale — falling back to IMU yaw for scan alignment"
+      );
+    } else if (mapToBaseYaw !== null && tfWarnedRef.current) {
+      tfWarnedRef.current = false;
+    }
+  }, [mapToBaseYaw]);
 
   // ── Memoized polar→cartesian (NaN-safe, preserves typed-array semantics) ──
   const cartesian = useMemo<ScanCartesian | null>(() => {
@@ -515,13 +561,14 @@ export function ScanCanvas({
         canvasRef.current,
         cartesian,
         projector,
-        standalone ? viewRef.current : IDENTITY_VIEW,
+        standalone ? viewRef.current : IDENTITY_VIEW_ANCHORED,
         standalone,
-        yawDeg
+        yawDeg,
+        scanYawRad
       );
       rafRef.current = null;
     });
-  }, [cartesian, projector, standalone, viewTick, yawDeg]);
+  }, [cartesian, projector, standalone, viewTick, yawDeg, scanYawRad]);
 
   // Zoom-control handlers (standalone only).
   const zoomBy = (factor: number) => {
@@ -728,8 +775,14 @@ function drawScan(
   projector: ScanProjector | undefined,
   view: ViewTransform,
   standalone: boolean,
-  yawDeg: number
+  yawDeg: number,
+  // Standalone-only: yaw (radians) used to rotate scan points from laser
+  // frame into the slam_toolbox map frame. Primary: TF map→base_link.
+  // Fallback: IMU yaw. Anchored mode ignores this — the caller-supplied
+  // projector handles the transform through Leaflet. Quick 260415-tf-align.
+  scanYawRad: number
 ) {
+  void yawDeg; // superseded by scanYawRad for heading tick + scan rotation
   // willReadFrequently: Playwright/probe-friendly, also cheap when we don't
   // actually read back. Quick 260414-restore.
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -782,10 +835,21 @@ function drawScan(
   // Quick 260414-restore.
   const drawOutline = standalone && !projector;
 
+  // Standalone rotation: rotate each laser-frame point by scanYawRad so the
+  // scan sits in the slam_toolbox map frame. Anchored mode: the projector
+  // does its own transform — leave points untouched. Compute sin/cos once.
+  const applyYaw = standalone && !projector;
+  const cosY = applyYaw ? Math.cos(scanYawRad) : 1;
+  const sinY = applyYaw ? Math.sin(scanYawRad) : 0;
+
   for (let i = 0; i < count; i++) {
-    const xR = xyr[i * 3 + 0];
-    const yR = xyr[i * 3 + 1];
+    const xR0 = xyr[i * 3 + 0];
+    const yR0 = xyr[i * 3 + 1];
     const r = xyr[i * 3 + 2];
+
+    // 2D rotation by scanYawRad (CCW, standard ROS convention).
+    const xR = applyYaw ? xR0 * cosY - yR0 * sinY : xR0;
+    const yR = applyYaw ? xR0 * sinY + yR0 * cosY : yR0;
 
     const p = project(xR, yR);
     if (!p) continue;
@@ -833,7 +897,10 @@ function drawScan(
 
     // Heading tick. ROS yaw is CCW-positive in the x-forward/y-left body
     // frame; canvas +y is south, so we negate sin to flip the screen y-axis.
-    const yawRad = (yawDeg * Math.PI) / 180;
+    // Uses scanYawRad (TF map→base_link, or IMU fallback) so the marker
+    // points the way slam_toolbox thinks the robot is facing — consistent
+    // with the scan's rotation. Quick 260415-tf-align.
+    const yawRad = scanYawRad;
     const tickLen = 12;
     const tx = mcx + Math.cos(yawRad) * tickLen;
     const ty = mcy - Math.sin(yawRad) * tickLen;

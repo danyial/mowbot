@@ -64,6 +64,28 @@ export const TOPICS = {
     throttleMs: 1000,
   },
 
+  // /tf — dynamic transforms, published at ~30 Hz by slam_toolbox + EKF.
+  // We only need yaw composition for /lidar alignment, so throttle hard:
+  // render path reads the cache lazily. Quick 260415-tf-align.
+  TF: {
+    name: "/tf",
+    messageType: "tf2_msgs/TFMessage",
+    compression: "cbor",
+    throttle_rate: 100, // 10 Hz wire cap
+    queue_length: 1,
+    throttleMs: 100,
+  },
+
+  // /tf_static — latched TRANSIENT_LOCAL (e.g. base_link → laser_frame).
+  // Delivered once on subscribe; no rate cap needed. Still routed through the
+  // same TFMessage decoder / cache. Quick 260415-tf-align.
+  TF_STATIC: {
+    name: "/tf_static",
+    messageType: "tf2_msgs/TFMessage",
+    compression: "cbor",
+    throttleMs: 0,
+  },
+
   // Published topics — no compression needed (browser publishes, doesn't subscribe)
   CMD_VEL: {
     name: "/cmd_vel",

@@ -1,29 +1,18 @@
 ---
-title: /lidar page — deeper zoom + live SLAM map during scanning
+title: /lidar page — live SLAM map during scanning
 area: web + ros2
 created: 2026-04-14
+updated: 2026-04-15
 source: post-phase-3 user feedback
 priority: medium
-related: quick/260414-w8p-lidar-standalone-page, Phase 3 (/scan overlay)
+related: quick/260414-w8p-lidar-standalone-page, quick/260415-9ww-lidar-deeper-zoom, Phase 3 (/scan overlay)
 ---
 
-# /lidar — deeper zoom and live mapping
+# /lidar — live mapping during scanning
 
-Captured 2026-04-14 as tomorrow's work after phase 3 + the lidar-standalone quick task wrapped up.
+Captured 2026-04-14. Item 1 (deeper zoom + 15 m range + brighter near-range viridis) shipped 2026-04-15 via quick `260415-9ww`. Only Item 2 remains.
 
-## Item 1 — Raise zoom ceiling
-
-**Status:** current clamp is `[0.25, 8]` in `web/components/lidar/scan-canvas.tsx`.
-**Problem:** 8× isn't enough to inspect near-field returns on a 25 m LD19 scan (e.g. a wall 30 cm away is only a handful of pixels even at max zoom).
-**Action:**
-- Raise upper clamp to ~32× (or higher; stress-test for aliasing and wheel-feel).
-- Consider switching from integer notches to a smoother exponential step so high-zoom still feels responsive.
-- Maybe: zoom-level readout in the corner (e.g. "12.4×") so the user knows where they are.
-- Sanity-check that the viridis color stays distinguishable when points cluster at high zoom (may want per-zoom `pointRadius` scaling so far-apart points don't get lost and close points don't merge into blobs).
-
-Files: `web/components/lidar/scan-canvas.tsx` only — map-overlay path unaffected.
-
-## Item 2 — Real map built during scanning (live SLAM)
+## Real map built during scanning (live SLAM)
 
 **Goal:** While the mower drives, accumulate `/scan` + `/odom` (or `/odometry/filtered`) into a persistent 2D occupancy map and render it live on `/lidar`. So the page evolves from "current 360° sweep" into "everything I've seen so far, stitched together by pose."
 

@@ -1,0 +1,358 @@
+=== DEPLOY LOG — 04-01 — 2026-04-15T06:47:20Z ===
+=== Pre-flight: Pi reachable? ===
+(eval):7: no such file or directory: sshpass -p password ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no pi@10.10.40.23
+=== DEPLOY LOG — 04-01 — 2026-04-15T06:47:35Z ===
+
+=== Step 1: scp docker-compose.yml ===
+(eval):9: no such file or directory: sshpass -p password scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no
+
+=== Step 2: scp slam_toolbox_params.yaml ===
+(eval):12: no such file or directory: sshpass -p password scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no
+
+=== Step 3: mkdir ~/mowbot/docker/slam ===
+(eval):15: no such file or directory: sshpass -p password ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no pi@10.10.40.23
+
+=== Step 4: scp docker/slam/Dockerfile ===
+(eval):18: no such file or directory: sshpass -p password scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no
+
+=== Verify files on Pi ===
+(eval):21: no such file or directory: sshpass -p password ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no pi@10.10.40.23
+=== DEPLOY LOG — 04-01 — 2026-04-15T06:47:42Z ===
+
+=== Step 1: scp docker-compose.yml ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+
+=== Step 2: scp slam_toolbox_params.yaml ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+
+=== Step 3: mkdir ~/mowbot/docker/slam ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+OK_mkdir
+
+=== Step 4: scp docker/slam/Dockerfile ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+
+=== Verify files on Pi ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+Permission denied, please try again.
+Permission denied, please try again.
+pi@10.10.40.23: Permission denied (publickey,password).
+
+=== Verify files on Pi (retry) ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+total 12
+drwxrwxr-x  2 pi pi 4096 Apr 15 08:47 .
+drwxrwxr-x 12 pi pi 4096 Apr 15 08:47 ..
+-rw-r--r--  1 pi pi  704 Apr 15 08:47 Dockerfile
+---
+-rw-r--r-- 1 pi pi 3454 Apr 15 08:47 /home/pi/mowbot/config/slam_toolbox_params.yaml
+---
+1
+
+=== Step 5: docker compose build slam (apt-installs slam_toolbox, multi-minute) ===
+#6 255.7 Setting up libxmu-headers (2:1.1.3-3) ...
+#6 255.7 Setting up libegl-dev:arm64 (1.4.0-1) ...
+#6 255.8 Setting up libgraphicsmagick++1-dev (1.4+really1.3.38-1ubuntu0.1) ...
+#6 255.8 Setting up libxmu-dev:arm64 (2:1.1.3-3) ...
+#6 255.9 Setting up libxrandr-dev:arm64 (2:1.5.2-1build1) ...
+#6 255.9 Setting up libglu1-mesa-dev:arm64 (9.0.2-1) ...
+#6 256.0 Setting up qtbase5-dev:arm64 (5.15.3+dfsg-2ubuntu0.2) ...
+#6 256.0 Setting up libxaw7-dev:arm64 (2:1.0.14-1) ...
+#6 256.1 Setting up libgles-dev:arm64 (1.4.0-1) ...
+#6 256.1 Setting up graphicsmagick-libmagick-dev-compat (1.4+really1.3.38-1ubuntu0.1) ...
+#6 256.2 Setting up libglvnd-dev:arm64 (1.4.0-1) ...
+#6 256.2 Setting up libglew-dev:arm64 (2.2.0-4) ...
+#6 256.3 Setting up ros-humble-nav2-map-server (1.1.20-1jammy.20260326.092049) ...
+#6 256.3 Setting up libgl1-mesa-dev:arm64 (23.2.1-1ubuntu3.1~22.04.3) ...
+#6 256.4 Setting up ros-humble-rviz-ogre-vendor (11.2.26-1jammy.20260307.142301) ...
+#6 256.4 Setting up ros-humble-rviz-rendering (11.2.26-1jammy.20260307.164508) ...
+#6 256.5 Setting up ros-humble-rviz-common (11.2.26-1jammy.20260326.093439) ...
+#6 256.6 Setting up ros-humble-rviz-default-plugins (11.2.26-1jammy.20260326.151854) ...
+#6 256.6 Setting up ros-humble-slam-toolbox (2.6.10-1jammy.20260326.170116) ...
+#6 256.7 Processing triggers for libc-bin (2.35-0ubuntu3.13) ...
+#6 DONE 258.0s
+
+#7 exporting to image
+#7 exporting layers
+#7 exporting layers 170.0s done
+#7 exporting manifest sha256:ff6766afa807980e9972ba7100cc161110d813e65462933a95828f8d711f7a94 0.1s done
+#7 exporting config sha256:b3754458af41d75a520f9b726f43220fea51592635c1710814b2e4ab5167b7a3
+#7 exporting config sha256:b3754458af41d75a520f9b726f43220fea51592635c1710814b2e4ab5167b7a3 0.1s done
+#7 exporting attestation manifest sha256:417c0f32bab40059fa102fd39ad3c4572a9cf70c7a98ce7eb967927de539bb31
+#7 exporting attestation manifest sha256:417c0f32bab40059fa102fd39ad3c4572a9cf70c7a98ce7eb967927de539bb31 0.1s done
+#7 exporting manifest list sha256:90c21e0e1143130e55978ece07e93f7b3ef65da92faf3e1546bd9824d5b9a402 0.1s done
+#7 naming to ghcr.io/danyial/mowbot/slam:humble-2.6.10
+#7 naming to ghcr.io/danyial/mowbot/slam:humble-2.6.10 0.2s done
+#7 unpacking to ghcr.io/danyial/mowbot/slam:humble-2.6.10
+#7 unpacking to ghcr.io/danyial/mowbot/slam:humble-2.6.10 77.1s done
+#7 DONE 248.4s
+
+#8 resolving provenance for metadata file
+#8 DONE 0.2s
+ Image ghcr.io/danyial/mowbot/slam:humble-2.6.10 Built 
+
+=== Step 5b: verify image present ===
+ghcr.io/danyial/mowbot/slam:humble-2.6.10       90c21e0e1143       2.26GB          474MB        
+
+=== Step 6: docker compose up -d slam ===
+ Container mower-lidar Running 
+ Container mower-micro-ros Running 
+ Container mower-imu Running 
+ Container mower-gnss Running 
+ Container mower-nav Running 
+ Container mower-slam Creating 
+ Container mower-slam Created 
+ Container mower-slam Starting 
+ Container mower-slam Started 
+
+=== Wait 10s for settle ===
+
+=== Step 7: docker compose ps (9-service regression gate) ===
+NAME              IMAGE                                           COMMAND                  SERVICE           CREATED             STATUS             PORTS
+mower-gnss        ghcr.io/danyial/mowbot/gnss:latest              "/ros_entrypoint.sh …"   gnss              12 hours ago        Up 2 hours         
+mower-imu         ghcr.io/danyial/mowbot/imu:latest               "/ros_entrypoint.sh …"   imu               12 hours ago        Up 2 hours         
+mower-lidar       ghcr.io/danyial/mowbot/lidar:bf668a8            "/ros_entrypoint.sh …"   lidar             12 hours ago        Up 2 hours         
+mower-micro-ros   ghcr.io/danyial/mowbot/micro-ros-agent:latest   "/ros_entrypoint.sh …"   micro-ros-agent   12 hours ago        Up 2 hours         
+mower-nav         ghcr.io/danyial/mowbot/nav:latest               "/ros_entrypoint.sh …"   nav               12 hours ago        Up 2 hours         
+mower-ntrip       ghcr.io/danyial/mowbot/ntrip:latest             "/entrypoint.sh"         ntrip             12 hours ago        Up 2 hours         
+mower-rosbridge   ghcr.io/danyial/mowbot/rosbridge:latest         "/ros_entrypoint.sh …"   rosbridge         12 hours ago        Up 2 hours         
+mower-slam        ghcr.io/danyial/mowbot/slam:humble-2.6.10       "/ros_entrypoint.sh …"   slam              15 seconds ago      Up 3 seconds       
+mower-web         ghcr.io/danyial/mowbot/web:latest               "docker-entrypoint.s…"   web               About an hour ago   Up About an hour   
+
+=== Step 7b: slam logs (last 40 lines) ===
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [7803]
+[async_slam_toolbox_node-1] 1776236220.012330 [0] async_slam: failed to increase socket receive buffer size to at least 10485760 bytes, current is 425984 bytes
+[async_slam_toolbox_node-1] [ERROR] [1776236220.012747658] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[async_slam_toolbox_node-1] This error state is being overwritten:
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1]   'error not set, at ./src/rcl/node.c:263'
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] with this new error message:
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1]   'rcl node's rmw handle is invalid, at ./src/rcl/node.c:415'
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] rcutils_reset_error() should be called after error handling to avoid this.
+[async_slam_toolbox_node-1] <<<
+[async_slam_toolbox_node-1] [ERROR] [1776236220.013166543] [rcl]: Failed to fini publisher for node: 1
+[async_slam_toolbox_node-1] terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+[async_slam_toolbox_node-1]   what():  failed to initialize rcl node: rcl node's rmw handle is invalid, at ./src/rcl/node.c:415
+[ERROR] [async_slam_toolbox_node-1]: process has died [pid 7803, exit code -6, cmd '/opt/ros/humble/lib/slam_toolbox/async_slam_toolbox_node --ros-args -r __node:=slam_toolbox --params-file /config/slam_toolbox_params.yaml --params-file /tmp/launch_params_1gex82g3'].
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-04-15-06-57-06-989050-mower-7868
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [7971]
+[async_slam_toolbox_node-1] 1776236227.355219 [0] async_slam: failed to increase socket receive buffer size to at least 10485760 bytes, current is 425984 bytes
+[async_slam_toolbox_node-1] [ERROR] [1776236227.355551404] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[async_slam_toolbox_node-1] This error state is being overwritten:
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1]   'error not set, at ./src/rcl/node.c:263'
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] with this new error message:
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1]   'rcl node's rmw handle is invalid, at ./src/rcl/node.c:415'
+[async_slam_toolbox_node-1] 
+[async_slam_toolbox_node-1] rcutils_reset_error() should be called after error handling to avoid this.
+[async_slam_toolbox_node-1] <<<
+[async_slam_toolbox_node-1] [ERROR] [1776236227.355963808] [rcl]: Failed to fini publisher for node: 1
+[async_slam_toolbox_node-1] terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+[async_slam_toolbox_node-1]   what():  failed to initialize rcl node: rcl node's rmw handle is invalid, at ./src/rcl/node.c:415
+
+=== DEVIATION [Rule 1 - Bug] CycloneDDS URI mismatch ===
+ROOT CAUSE: Dockerfile set CYCLONEDDS_URI=/config/cyclonedds.xml which mandates
+10MB SocketReceiveBufferSize; Pi net.core.rmem_max is only 212992 bytes (208 KB).
+This caused rmw_cyclonedds_cpp rmw_create_node to fail with "failed to create domain".
+FIX: remove CYCLONEDDS_URI env from Dockerfile (matches nav/gnss/lidar convention).
+
+=== Re-scp Dockerfile ===
+Warning: Permanently added '10.10.40.23' (ED25519) to the list of known hosts.
+=== Rebuild + restart slam ===
+#7 exporting manifest list sha256:cb99459ef6ca6d27dd9b4a47087e33e31ebd15d8ff8ac0a64cf5b716d6332891
+#7 exporting manifest list sha256:cb99459ef6ca6d27dd9b4a47087e33e31ebd15d8ff8ac0a64cf5b716d6332891 0.1s done
+#7 naming to ghcr.io/danyial/mowbot/slam:humble-2.6.10 0.0s done
+#7 unpacking to ghcr.io/danyial/mowbot/slam:humble-2.6.10
+#7 unpacking to ghcr.io/danyial/mowbot/slam:humble-2.6.10 0.2s done
+#7 DONE 1.1s
+
+#8 resolving provenance for metadata file
+#8 DONE 0.0s
+ Image ghcr.io/danyial/mowbot/slam:humble-2.6.10 Built 
+ Container mower-micro-ros Running 
+ Container mower-lidar Running 
+ Container mower-gnss Running 
+ Container mower-imu Running 
+ Container mower-nav Running 
+ Container mower-slam Recreate 
+ Container mower-slam Recreated 
+ Container mower-slam Starting 
+ Container mower-slam Started 
+
+=== slam logs (post-fix) ===
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-04-15-06-58-25-074824-mower-9505
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [9525]
+[async_slam_toolbox_node-1] [INFO] [1776236305.668091549] [slam_toolbox]: Node using stack size 40000000
+[async_slam_toolbox_node-1] [INFO] [1776236306.480850796] [slam_toolbox]: Using solver plugin solver_plugins::CeresSolver
+[async_slam_toolbox_node-1] [INFO] [1776236306.486025529] [slam_toolbox]: CeresSolver: Using SCHUR_JACOBI preconditioner.
+[async_slam_toolbox_node-1] Registering sensor: [Custom Described Lidar]
+
+=== 9-service regression gate (post-fix) ===
+NAME              IMAGE                                           COMMAND                  SERVICE           CREATED             STATUS             PORTS
+mower-gnss        ghcr.io/danyial/mowbot/gnss:latest              "/ros_entrypoint.sh …"   gnss              12 hours ago        Up 2 hours         
+mower-imu         ghcr.io/danyial/mowbot/imu:latest               "/ros_entrypoint.sh …"   imu               12 hours ago        Up 2 hours         
+mower-lidar       ghcr.io/danyial/mowbot/lidar:bf668a8            "/ros_entrypoint.sh …"   lidar             12 hours ago        Up 2 hours         
+mower-micro-ros   ghcr.io/danyial/mowbot/micro-ros-agent:latest   "/ros_entrypoint.sh …"   micro-ros-agent   12 hours ago        Up 2 hours         
+mower-nav         ghcr.io/danyial/mowbot/nav:latest               "/ros_entrypoint.sh …"   nav               12 hours ago        Up 2 hours         
+mower-ntrip       ghcr.io/danyial/mowbot/ntrip:latest             "/entrypoint.sh"         ntrip             12 hours ago        Up 2 hours         
+mower-rosbridge   ghcr.io/danyial/mowbot/rosbridge:latest         "/ros_entrypoint.sh …"   rosbridge         12 hours ago        Up 2 hours         
+mower-slam        ghcr.io/danyial/mowbot/slam:humble-2.6.10       "/ros_entrypoint.sh …"   slam              23 seconds ago      Up 21 seconds      
+mower-web         ghcr.io/danyial/mowbot/web:latest               "docker-entrypoint.s…"   web               About an hour ago   Up About an hour   
+
+=== Step 8: ros2 topic hz /map (30 s) ===
+timeout: failed to run command ‘ros2’: No such file or directory
+
+=== Step 9: ros2 topic echo /map --once (first 25 lines) ===
+timeout: failed to run command ‘ros2’: No such file or directory
+
+=== Step 8 (retry): ros2 topic hz /map (30 s window) ===
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00002s window: 2
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00037s window: 3
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00042s window: 4
+average rate: 0.500
+	min: 2.000s max: 2.000s std dev: 0.00041s window: 5
+average rate: 0.500
+	min: 2.000s max: 2.001s std dev: 0.00050s window: 6
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00056s window: 7
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00055s window: 8
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00052s window: 9
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00050s window: 10
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00048s window: 11
+average rate: 0.500
+	min: 1.999s max: 2.001s std dev: 0.00046s window: 12
+
+=== Step 9 (retry): ros2 topic echo /map --once (metadata) ===
+header:
+  stamp:
+    sec: 1776236370
+    nanosec: 517989339
+  frame_id: map
+info:
+  map_load_time:
+    sec: 0
+    nanosec: 0
+  resolution: 0.05000000074505806
+  width: 138
+  height: 74
+  origin:
+    position:
+      x: -1.3827428714494963
+      y: -3.158224823224341
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+data:
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+
+=== Step 10: tf2_echo map -> odom ===
+[INFO] [1776236395.137786546] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+At time 1776236396.717978274
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 1776236397.817973438
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+
+=== Step 10b: tf2_echo odom -> base_link ===
+[INFO] [1776236400.810799313] [tf2_echo]: Waiting for transform odom ->  base_link: Invalid frame ID "odom" passed to canTransform argument target_frame - frame does not exist
+At time 1776236401.653196486
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.444, 0.896]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.920]
+- Rotation: in RPY (degree) [0.000, -0.000, 52.699]
+- Matrix:
+  0.606 -0.795  0.000  0.000
+  0.795  0.606  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 1776236402.648197521
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.172, 0.985]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.345]
+
+=== Step 10c: tf2_echo base_link -> laser_frame ===
+[INFO] [1776236406.661327096] [tf2_echo]: Waiting for transform base_link ->  laser_frame: Invalid frame ID "base_link" passed to canTransform argument target_frame - frame does not exist
+At time 0.0
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+
+=== Step 11: view_frames ===
+[INFO] [1776236414.355919059] [view_frames]: Listening to tf data for 5.0 seconds...
+[INFO] [1776236419.366807600] [view_frames]: Generating graph in frames.pdf file...
+[INFO] [1776236419.385786025] [view_frames]: Result:tf2_msgs.srv.FrameGraph_Response(frame_yaml="base_link: \n  parent: 'odom'\n  broadcaster: 'default_authority'\n  rate: 30.197\n  most_recent_transform: 1776236419.348946\n  oldest_transform: 1776236414.116578\n  buffer_length: 5.232\nodom: \n  parent: 'map'\n  broadcaster: 'default_authority'\n  rate: 10.192\n  most_recent_transform: 1776236420.218000\n  oldest_transform: 1776236415.017982\n  buffer_length: 5.200\nlaser_frame: \n  parent: 'base_link'\n  broadcaster: 'default_authority'\n  rate: 10000.000\n  most_recent_transform: 0.000000\n  oldest_transform: 0.000000\n  buffer_length: 0.000\n")
+
+=== TF tree summary from view_frames result (SC#2 evidence) ===
+base_link: parent=odom, rate=30.197 Hz, broadcaster=default_authority (from EKF)
+odom: parent=map, rate=10.192 Hz, broadcaster=default_authority (from slam_toolbox via transform_publish_period=0.05 => 20Hz, observed 10Hz)
+laser_frame: parent=base_link, static (from mower_nav_launch.py)
+=> Full chain map -> odom -> base_link -> laser_frame PRESENT.
+
+=== 9-service regression gate (final, 9 services Up) ===
+micro-ros-agent gnss imu ntrip nav rosbridge web lidar slam
+
+=== Frames artifact retrieved ===
+-rw-r--r--@ 1 danny.smolinsky  staff    720 Apr 15 09:02 .planning/phases/04-live-mapping-slam-toolbox/04-01-tf-frames.gv
+-rw-r--r--@ 1 danny.smolinsky  staff  15176 Apr 15 09:02 .planning/phases/04-live-mapping-slam-toolbox/04-01-tf-frames.pdf
+
+=== Task 5 verification summary ===
+- /map hz: 0.500 Hz sustained 30+ s  -> PASS (target >= 0.4)
+- /map echo: OccupancyGrid populated (138x74, 0.05 res)  -> PASS
+- tf2_echo map->odom: SUCCESS (4x4 matrix printed, timestamps advance)
+- tf2_echo odom->base_link: SUCCESS
+- tf2_echo base_link->laser_frame: SUCCESS (static)
+- view_frames: chain map<-odom<-base_link and base_link<-laser_frame confirmed
+- 9-service regression gate: micro-ros-agent, gnss, imu, ntrip, nav, rosbridge, web, lidar, slam ALL Up
+- map->odom rate ~10 Hz published by slam_toolbox (not static)  -> MAP-03 PASS

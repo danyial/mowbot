@@ -278,64 +278,70 @@ export function ScanCanvas({
     host.appendChild(canvas);
     canvasRef.current = canvas;
 
-    const badge = document.createElement("div");
-    badge.style.cssText = `
-      position: absolute; top: 8px; right: 8px; z-index: 500;
-      padding: 2px 10px; border-radius: 9999px;
-      font-size: 12px; font-weight: 600;
-      pointer-events: none;
-      font-family: system-ui, -apple-system, sans-serif;
-    `;
-    badge.textContent = "LIDAR: —";
-    host.appendChild(badge);
-    badgeRef.current = badge;
+    // Badge + legend render ONLY in standalone (/lidar) mode. On /map (anchored)
+    // mode they collided with the GPS "No Fix" badge (top-right) and the zone
+    // management buttons (bottom-left/center). Users who want LIDAR status go
+    // to /lidar. Quick 260415-map-overlap.
+    let badge: HTMLDivElement | null = null;
+    let legend: HTMLDivElement | null = null;
+    if (standalone) {
+      badge = document.createElement("div");
+      badge.style.cssText = `
+        position: absolute; top: 8px; right: 8px; z-index: 500;
+        padding: 2px 10px; border-radius: 9999px;
+        font-size: 12px; font-weight: 600;
+        pointer-events: none;
+        font-family: system-ui, -apple-system, sans-serif;
+      `;
+      badge.textContent = "LIDAR: —";
+      host.appendChild(badge);
+      badgeRef.current = badge;
 
-    const legend = document.createElement("div");
-    legend.style.cssText = `
-      position: absolute; bottom: 8px; right: 8px; z-index: 500;
-      padding: 4px 8px; border-radius: 6px;
-      background: rgba(0,0,0,0.5); color: #fff;
-      font-size: 11px; font-family: system-ui, -apple-system, sans-serif;
-      pointer-events: none; display: flex; align-items: center; gap: 6px;
-    `;
-    const bar = document.createElement("canvas");
-    bar.width = 100;
-    bar.height = 8;
-    {
-      const bctx = bar.getContext("2d");
-      if (bctx) {
-        const img = bctx.createImageData(100, 8);
-        const tmp = new Uint8ClampedArray(3);
-        // Standalone legend mirrors the draw-loop floor remap so the gradient
-        // shown in the legend matches what's actually painted on the canvas.
-        // Quick 260415-9ww (revised).
-        for (let x = 0; x < 100; x++) {
-          const t = x / 99;
-          const lutT = standalone
-            ? VIRIDIS_FLOOR_STANDALONE + t * (1 - VIRIDIS_FLOOR_STANDALONE)
-            : t;
-          sampleViridis(lutT, tmp, 0);
-          for (let y = 0; y < 8; y++) {
-            const o = (y * 100 + x) * 4;
-            img.data[o] = tmp[0];
-            img.data[o + 1] = tmp[1];
-            img.data[o + 2] = tmp[2];
-            img.data[o + 3] = 255;
+      legend = document.createElement("div");
+      legend.style.cssText = `
+        position: absolute; bottom: 8px; right: 8px; z-index: 500;
+        padding: 4px 8px; border-radius: 6px;
+        background: rgba(0,0,0,0.5); color: #fff;
+        font-size: 11px; font-family: system-ui, -apple-system, sans-serif;
+        pointer-events: none; display: flex; align-items: center; gap: 6px;
+      `;
+      const bar = document.createElement("canvas");
+      bar.width = 100;
+      bar.height = 8;
+      {
+        const bctx = bar.getContext("2d");
+        if (bctx) {
+          const img = bctx.createImageData(100, 8);
+          const tmp = new Uint8ClampedArray(3);
+          // Standalone legend mirrors the draw-loop floor remap so the gradient
+          // shown in the legend matches what's actually painted on the canvas.
+          // Quick 260415-9ww (revised).
+          for (let x = 0; x < 100; x++) {
+            const t = x / 99;
+            const lutT = VIRIDIS_FLOOR_STANDALONE + t * (1 - VIRIDIS_FLOOR_STANDALONE);
+            sampleViridis(lutT, tmp, 0);
+            for (let y = 0; y < 8; y++) {
+              const o = (y * 100 + x) * 4;
+              img.data[o] = tmp[0];
+              img.data[o + 1] = tmp[1];
+              img.data[o + 2] = tmp[2];
+              img.data[o + 3] = 255;
+            }
           }
+          bctx.putImageData(img, 0, 0);
         }
-        bctx.putImageData(img, 0, 0);
       }
+      const lo = document.createElement("span");
+      lo.textContent = "0 m";
+      const hi = document.createElement("span");
+      hi.textContent = `${RANGE_MAX_FALLBACK_M} m`;
+      legend.appendChild(lo);
+      legend.appendChild(bar);
+      legend.appendChild(hi);
+      host.appendChild(legend);
+      legendRef.current = legend;
+      legendHiRef.current = hi;
     }
-    const lo = document.createElement("span");
-    lo.textContent = "0 m";
-    const hi = document.createElement("span");
-    hi.textContent = `${RANGE_MAX_FALLBACK_M} m`;
-    legend.appendChild(lo);
-    legend.appendChild(bar);
-    legend.appendChild(hi);
-    host.appendChild(legend);
-    legendRef.current = legend;
-    legendHiRef.current = hi;
 
     const resize = () => {
       const w = host.clientWidth;
@@ -478,8 +484,8 @@ export function ScanCanvas({
       if (ro) ro.disconnect();
       else window.removeEventListener("resize", resize);
       if (canvas.parentNode === host) host.removeChild(canvas);
-      if (badge.parentNode === host) host.removeChild(badge);
-      if (legend.parentNode === host) host.removeChild(legend);
+      if (badge && badge.parentNode === host) host.removeChild(badge);
+      if (legend && legend.parentNode === host) host.removeChild(legend);
       canvasRef.current = null;
       badgeRef.current = null;
       legendRef.current = null;

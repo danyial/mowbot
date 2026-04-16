@@ -9,7 +9,7 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 
 
 def generate_launch_description():
@@ -22,17 +22,20 @@ def generate_launch_description():
         DeclareLaunchArgument("baud", default_value="115200"),
         DeclareLaunchArgument("frame_id", default_value="gps_link"),
 
-        # 1. Reads the UART and publishes every NMEA sentence as nmea_msgs/Sentence
-        Node(
-            package="nmea_navsat_driver",
-            executable="nmea_topic_serial_reader",
-            name="nmea_serial_reader",
+        # 1. Reads the UART and publishes each NMEA sentence as nmea_msgs/Sentence
+        #    Custom node — upstream `nmea_topic_serial_reader` in ROS 2 Humble has
+        #    a bug where it writes raw bytes to msg.sentence without decoding,
+        #    crashing with "The 'sentence' field must be of type 'str'". Our
+        #    replacement does the decode and drops non-NMEA lines.
+        ExecuteProcess(
+            cmd=[
+                "python3", "/launch/nmea_serial_bridge.py",
+                "--ros-args",
+                "-p", ["port:=", port],
+                "-p", ["baud:=", baud],
+                "-p", ["frame_id:=", frame_id],
+            ],
             output="screen",
-            parameters=[{
-                "port": port,
-                "baud": baud,
-                "frame_id": frame_id,
-            }],
         ),
 
         # 2. Consumes /nmea_sentence and publishes /fix, /vel, /time_reference

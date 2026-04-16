@@ -38,6 +38,7 @@ services:
       - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
     volumes:
       - ./config/gnss_launch.py:/launch/gnss_launch.py:ro
+      - ./config/nmea_serial_bridge.py:/launch/nmea_serial_bridge.py:ro
     command: >
       ros2 launch /launch/gnss_launch.py
       port:=/dev/ttyGNSS

@@ -1,8 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import type { NavSatFix, FixStatus } from "@/lib/types/ros-messages";
-import { getFixStatus } from "@/lib/types/ros-messages";
+import type { NavSatFix, FixStatus, GgaFields } from "@/lib/types/ros-messages";
+import { getFixStatus, GGA_QUALITY_TO_FIX_STATUS } from "@/lib/types/ros-messages";
 
 // Minimum distance in meters between boundary recording points
 const BOUNDARY_MIN_DISTANCE_M = 0.5;
@@ -38,6 +38,12 @@ interface GpsState {
   satelliteCount: number;
   lastUpdate: number;
 
+  // GGA-sourced fields — authoritative for RTK Fixed vs Float (sensor_msgs/NavSatFix
+  // loses the distinction, see 07-RESEARCH.md Phase 7 follow-up).
+  nmeaFixQuality: number;     // GGA field 6; 0-8, -1 if never received
+  correctionAge: number;      // GGA field 14 (seconds); -1 if unknown
+  nmeaLastUpdate: number;     // ms epoch of last GGA
+
   // Track (driven path)
   track: [number, number][];
   isRecording: boolean;
@@ -49,6 +55,7 @@ interface GpsState {
 
   // Actions
   updateFix: (msg: NavSatFix) => void;
+  updateGga: (fields: GgaFields) => void;
   startTrackRecording: () => void;
   stopTrackRecording: () => void;
   clearTrack: () => void;
@@ -70,6 +77,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   satelliteCount: 0,
   lastUpdate: 0,
 
+  nmeaFixQuality: -1,
+  correctionAge: -1,
+  nmeaLastUpdate: 0,
+
   track: [],
   isRecording: false,
 
@@ -78,12 +89,16 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   boundaryPoints: [],
 
   updateFix: (msg: NavSatFix) => {
-    const fixStatus = getFixStatus(
-      msg.status.status,
-      msg.position_covariance_type
-    );
-
     const state = get();
+    // If we received a GGA within the last 2 seconds, its fixStatus wins —
+    // GGA distinguishes RTK Fixed (quality=4) from RTK Float (quality=5), which
+    // NavSatFix collapses into NavSatStatus.status=2. See 07-RESEARCH.md.
+    const ggaFresh =
+      state.nmeaLastUpdate > 0 && Date.now() - state.nmeaLastUpdate < 2000;
+    const fixStatus = ggaFresh
+      ? state.fixStatus
+      : getFixStatus(msg.status.status, msg.position_covariance_type);
+
     const newTrack = state.isRecording
       ? [...state.track, [msg.latitude, msg.longitude] as [number, number]]
       : state.track;
@@ -141,6 +156,19 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       lastUpdate: Date.now(),
       track: newTrack,
       boundaryPoints: newBoundaryPoints,
+    });
+  },
+
+  updateGga: (fields: GgaFields) => {
+    const fixStatus =
+      GGA_QUALITY_TO_FIX_STATUS[fields.fixQuality] ?? "no_fix";
+    set({
+      fixStatus,                          // authoritative — overrides the /fix mapping
+      nmeaFixQuality: fields.fixQuality,
+      satelliteCount: fields.satelliteCount,
+      correctionAge: fields.correctionAge,
+      hdop: Number.isFinite(fields.hdop) ? fields.hdop : 99,
+      nmeaLastUpdate: Date.now(),
     });
   },
 

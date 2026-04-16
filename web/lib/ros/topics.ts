@@ -37,6 +37,18 @@ export const TOPICS = {
     compression: "cbor",
     throttleMs: 0, // 1 Hz, no throttle needed
   },
+  // Raw NMEA sentences from the UM980 via nmea_topic_serial_reader. We parse GGA
+  // client-side to recover true RTK fix quality (4=Fixed vs 5=Float — /fix loses
+  // this distinction), satellite count, and correction age. Throttle hard:
+  // UM980 emits ~8 sentences/epoch at 1 Hz, we only need the GGA.
+  NMEA_SENTENCE: {
+    name: "/nmea_sentence",
+    messageType: "nmea_msgs/Sentence",
+    compression: "cbor",
+    throttle_rate: 200, // rosbridge-side: cap to 5 Hz
+    queue_length: 1,
+    throttleMs: 200,    // client-side: cap to 5 Hz
+  },
   DIAGNOSTICS: {
     name: "/diagnostics",
     messageType: "diagnostic_msgs/DiagnosticArray",

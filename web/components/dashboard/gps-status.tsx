@@ -104,6 +104,9 @@ export function GpsStatus() {
     accuracy,
     verticalAccuracy,
     covarianceType,
+    satelliteCount,
+    nmeaFixQuality,
+    correctionAge,
     lastUpdate,
   } = useGpsStore();
 
@@ -211,20 +214,59 @@ export function GpsStatus() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
-                label="Fix-Status"
+                label="Satelliten"
+                value={satelliteCount > 0 ? String(satelliteCount) : "--"}
+                valueClassName={
+                  satelliteCount >= 10
+                    ? "text-green-500"
+                    : satelliteCount >= 6
+                    ? "text-yellow-500"
+                    : satelliteCount > 0
+                    ? "text-red-500"
+                    : undefined
+                }
+              />
+              <ValueDisplay
+                label="Korrekturen"
+                value={
+                  correctionAge < 0
+                    ? "--"
+                    : correctionAge.toFixed(1)
+                }
+                unit={correctionAge < 0 ? "" : "s alt"}
+                valueClassName={
+                  correctionAge < 0
+                    ? undefined
+                    : correctionAge < 2
+                    ? "text-green-500"
+                    : correctionAge < 5
+                    ? "text-yellow-500"
+                    : "text-red-500"
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <ValueDisplay
+                label="GGA Quality"
+                value={nmeaFixQuality >= 0 ? String(nmeaFixQuality) : "--"}
+              />
+              <ValueDisplay
+                label="NavSat Status"
                 value={`${fixStatusCode} (${fixCodeLabels[fixStatusCode] || "?"})`}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
                 label="Cov-Typ"
                 value={covTypeLabels[covarianceType] || "?"}
               />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
                 label="Alter"
                 value={ageMs < 0 ? "--" : formatAge(ageMs)}
                 valueClassName={isStale ? "text-yellow-500" : undefined}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <ValueDisplay
                 label="Qualität"
                 value={`${quality.percent}`}

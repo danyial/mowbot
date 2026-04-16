@@ -21,7 +21,9 @@ import type {
   LaserScan,
   OccupancyGrid,
   PoseWithCovarianceStamped,
+  NmeaSentence,
 } from "@/lib/types/ros-messages";
+import { parseGga } from "@/lib/types/ros-messages";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 
@@ -84,6 +86,13 @@ function setupSubscriptions() {
     }),
     subscribe<PoseWithCovarianceStamped>("POSE", (msg) => {
       useSlamPoseStore.getState().updatePose(msg);
+    }),
+    subscribe<NmeaSentence>("NMEA_SENTENCE", (msg) => {
+      // UM980 emits ~8 sentences per epoch; we only care about GGA for the
+      // fix-quality / satellites / correction-age trio. parseGga returns null
+      // for non-GGA sentences, which we silently drop.
+      const gga = parseGga(msg.sentence);
+      if (gga) useGpsStore.getState().updateGga(gga);
     }),
     subscribe<StringMsg>("MOWER_STATUS", (msg) => {
       try {

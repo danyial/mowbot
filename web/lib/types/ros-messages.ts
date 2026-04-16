@@ -143,12 +143,93 @@ export const FIX_STATUS_MAP: Record<number, FixStatus> = {
   [2]: "rtk_float",
 };
 
+/**
+ * GGA field 6 (fix quality) → canonical fix status.
+ *   0 = invalid, 1 = GPS SPS (autonomous), 2 = DGPS, 3 = PPS,
+ *   4 = RTK Fixed, 5 = RTK Float, 6 = Dead Reckoning,
+ *   7 = Manual, 8 = Simulator
+ * This is the authoritative source — /fix (sensor_msgs/NavSatFix) collapses
+ * 4 and 5 both into NavSatStatus.status=2, which is why we needed a raw NMEA
+ * path to recover the Fixed/Float distinction (Phase 7 follow-up).
+ */
+export const GGA_QUALITY_TO_FIX_STATUS: Record<number, FixStatus> = {
+  0: "no_fix",
+  1: "autonomous",
+  2: "dgps",
+  3: "autonomous", // PPS — treat as autonomous-grade
+  4: "rtk_fixed",
+  5: "rtk_float",
+  6: "autonomous", // Dead-reckoning
+  7: "autonomous", // Manual
+  8: "autonomous", // Simulator
+};
+
 export function getFixStatus(
   status: number,
   covarianceType: number
 ): FixStatus {
   if (covarianceType === 3 && status >= 0) return "rtk_fixed";
   return FIX_STATUS_MAP[status] ?? "no_fix";
+}
+
+/**
+ * nmea_msgs/Sentence — raw NMEA sentence + header. Published by
+ * nmea_topic_serial_reader (stock nmea_navsat_driver executable, split out
+ * from nmea_serial_driver so we can subscribe to the raw stream in parallel
+ * with the decoded /fix topic).
+ */
+export interface NmeaSentence {
+  header: Header;
+  sentence: string;
+}
+
+export interface GgaFields {
+  fixQuality: number;      // field 6, 0-8 (see GGA_QUALITY_TO_FIX_STATUS)
+  satelliteCount: number;  // field 7
+  hdop: number;            // field 8
+  correctionAge: number;   // field 14, seconds since last RTCM correction; -1 if unknown
+}
+
+/**
+ * Parse a `$GNGGA`/`$GPGGA` sentence. Returns null if the sentence is not a
+ * GGA or does not pass sanity checks. We deliberately do NOT validate the
+ * checksum here — rosbridge/CBOR transport is lossless, and the UM980's NMEA
+ * output is trusted.
+ *
+ * Fields of interest (1-indexed per NMEA spec, 0-indexed in the split):
+ *   [0]  $GNGGA / $GPGGA (talker + type)
+ *   [6]  Fix quality (0-8)
+ *   [7]  Satellites used
+ *   [8]  HDOP
+ *   [13] Age of differential corrections (seconds, empty if none)
+ */
+export function parseGga(sentence: string): GgaFields | null {
+  if (!sentence.startsWith("$") || sentence.length < 30) return null;
+  const firstComma = sentence.indexOf(",");
+  if (firstComma < 0) return null;
+  const tag = sentence.slice(1, firstComma);
+  if (!tag.endsWith("GGA")) return null;
+
+  // Strip checksum suffix (*XX) before split
+  const starIdx = sentence.indexOf("*");
+  const body = starIdx >= 0 ? sentence.slice(0, starIdx) : sentence;
+  const parts = body.split(",");
+  if (parts.length < 15) return null;
+
+  const fixQuality = parseInt(parts[6], 10);
+  const satelliteCount = parseInt(parts[7], 10);
+  const hdop = parseFloat(parts[8]);
+  const correctionAgeRaw = parts[13];
+  const correctionAge = correctionAgeRaw === "" ? -1 : parseFloat(correctionAgeRaw);
+
+  if (!Number.isFinite(fixQuality)) return null;
+
+  return {
+    fixQuality,
+    satelliteCount: Number.isFinite(satelliteCount) ? satelliteCount : 0,
+    hdop: Number.isFinite(hdop) ? hdop : 99,
+    correctionAge: Number.isFinite(correctionAge) ? correctionAge : -1,
+  };
 }
 
 // sensor_msgs/LaserScan — added Phase 3 Commit B (VIZ-01)

@@ -36,12 +36,13 @@ services:
     container_name: mower-gnss
     devices:
       - ${GNSS_DEVICE:-/dev/ttyGNSS}:/dev/ttyGNSS
+    volumes:
+      - ./config/gnss_launch.py:/launch/gnss_launch.py:ro
     command: >
-      ros2 run nmea_navsat_driver nmea_serial_driver
-      --ros-args
-      -p port:=/dev/ttyGNSS
-      -p baud:=${GNSS_BAUD:-115200}
-      -p frame_id:=gps_link
+      ros2 launch /launch/gnss_launch.py
+      port:=/dev/ttyGNSS
+      baud:=${GNSS_BAUD:-115200}
+      frame_id:=gps_link
 
   # ============================================
   # NTRIP — RTK-Korrekturdaten

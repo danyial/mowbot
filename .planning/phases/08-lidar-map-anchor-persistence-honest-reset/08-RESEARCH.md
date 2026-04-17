@@ -1220,14 +1220,16 @@ Framework install: **none** — `node --test` is built in.
 | Validation Architecture | HIGH | Extends Phase 6 `node --test` pattern straightforwardly |
 | Composite pose math | MEDIUM-HIGH | Formula is standard SE(2); Wave 0 unit test closes the gap |
 
-### Open Questions
+### Open Questions (RESOLVED)
 
-1. Which slam-reset option (A/B/C) does the user want?
-2. Should `.planning/state/map-epoch.json` relocate to `data/map-epoch.json`?
-3. Should `LIDAR_DISPLAY_YAW_OFFSET` be dropped from MapBitmap?
-4. Real yard max size relative to 5 MB localStorage quota?
-5. Empirical `/map` TRANSIENT_LOCAL latch behavior post Option A restart?
+All questions resolved — see §Open Questions (RESOLVED) above for the full rationales. One-line summary:
+
+1. Slam-reset option — RESOLVED (D-13a locks Option B: deserialize_map with Wave-0 empty.posegraph; docker.sock:ro preserved)
+2. Epoch-file path — RESOLVED (D-07 correction: `data/map-epoch.json`, matches existing mounted-volume pattern)
+3. LIDAR_DISPLAY_YAW_OFFSET — RESOLVED (Plan 08-04 Task 1 drops the rotate wrapping; UAT Test 1 verifies)
+4. Yard max size — ACCEPTED OPEN (post-ship metric; IndexedDB migration deferred per REQUIREMENTS.md)
+5. TL latch behavior — RESOLVED (moot post-revision: Plan 02 `minStampMs` filter drops any stamp < service-call-start, regardless of latch behavior)
 
 ### Ready for Planning
 
-Research complete. Planner can draft PLAN files, but the **slam-reset option** and **epoch-file path** questions MUST be resolved (via discuss-phase amendment or plan-lock task) before Wave 1 implementation begins. All other design questions have concrete recommendations the planner can adopt directly.
+Research complete and all open questions closed. Planner has drafted PLAN 08-01..04. All architectural decisions locked via CONTEXT.md and the post-revision architecture (Plan 01 Test #5 + #6 pin the stale-latch filter and the slamDeserializeEmpty-failure drain).

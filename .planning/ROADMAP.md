@@ -76,7 +76,11 @@ Three phases, strictly ordered by data dependency. Phase 6 (logs) ships first as
   4. Operator clicks Eraser → the server-side `/api/map/reset` endpoint calls the `slam_toolbox` reset service, bumps the map epoch, and the client clears localStorage; a subsequent F5 shows a fresh empty grid (no stale-map resurrection)
   5. If the reset endpoint cannot verify the slam node is alive and the reset succeeded, it returns a structured failure and the UI surfaces it (no false-success toast)
 
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 08-01-PLAN.md — Wave 0: empty.posegraph fixture (hardware) + 5 RED test scaffolds
+- [ ] 08-02-PLAN.md — Wave 1: server-side (map-epoch + slam-reset + reset-handler + /api/map/{epoch,reset} routes) + hardware smoke
+- [ ] 08-03-PLAN.md — Wave 2: client stores (map-store epoch+rehydrate+quota, slam-pose-store anchorOdom, odometry-store yawRad) + pure computeMapFramePose helper
+- [ ] 08-04-PLAN.md — Wave 3: UI (MapBitmap mapFramePose offset, ScanCanvas orange cursor + Eraser fetch flow with toast/banner) + live hardware UAT
 **UI hint**: yes
 
 ## Progress

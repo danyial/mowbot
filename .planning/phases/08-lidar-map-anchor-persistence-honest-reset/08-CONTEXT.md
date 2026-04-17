@@ -50,7 +50,7 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
 - New robot-cursor overlay: filled circle + heading line (12 px) drawn at current `base_link` pose in map frame, constant pixel size, orange (`#f97316`) with 1 px white outline, updates at EKF rate (~30 Hz)
 - `useMapStore` extended with `epoch: number | null` and a `setEpoch(n)` action
 - `localStorage` persistence: write OccupancyGrid as JSON under key `mowerbot.map.epoch.<N>` whenever `updateMap()` fires; on page mount, read latest epoch from server, look up matching key, rehydrate; on epoch mismatch, drop all `mowerbot.map.*` keys
-- Server-side epoch state in `.planning/state/map-epoch.json` (atomic write via temp + rename)
+- Server-side epoch state in `data/map-epoch.json` (atomic write via temp + rename) — path corrected per D-07 post-research (was `.planning/state/...`; relocated to match existing `data/{config,zones,missions}.json` pattern since `.planning/` is not mounted into mower-web)
 - New API routes:
   - `GET /api/map/epoch` → `{ epoch: number, resetAt: string }`
   - `POST /api/map/reset` → optimistic-clear ack from server; honest-await for first new `/map` publish before signalling success
@@ -116,7 +116,7 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
   ```
 - **D-14:** **Server flow:**
   1. Call `slam_toolbox/reset` (std_srvs/Empty) via rosbridge — same path as the current client-side Eraser; refactor into a shared helper
-  2. On service success → atomically bump epoch in `.planning/state/map-epoch.json` (`epoch += 1`, `resetAt = now()`)
+  2. On service success → atomically bump epoch in `data/map-epoch.json` (`epoch += 1`, `resetAt = now()`) [D-07 corrected path]
   3. Subscribe `/map` once with a 3 s timeout; resolve `mapReceived: true` on receipt, else fall through to `mapTimeout`
   4. Return JSON
 - **D-15:** **Atomic concern:** if service succeeds but file write fails (disk full, permission), the slam_toolbox is reset but the epoch isn't bumped — client thinks nothing happened. Mitigation: file write happens BEFORE service call; if write fails, return early without resetting slam. Operator sees error, retries, idempotent.
@@ -134,7 +134,7 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
 
 - Exact quaternion → yaw helper location (probably `web/lib/utils/quaternion.ts` since it'll be shared by drift script analog + cursor)
 - Toast component pick (existing `radix-ui` + sonner already wired? or use an inline `<div>` matching the connection-state badge aesthetic)
-- File-locking strategy for `.planning/state/map-epoch.json` if concurrent resets become a concern (probably not — single operator, single Eraser, sequential clicks). Default: trust POSIX rename atomicity.
+- File-locking strategy for `data/map-epoch.json` if concurrent resets become a concern (probably not — single operator, single Eraser, sequential clicks). Default: trust POSIX rename atomicity.
 - Whether the rehydrated localStorage map shows a "rehydrated, awaiting fresh data" badge or just renders dimmed via existing `isStale` flag
 - Cleanup of `mowerbot.map.epoch.*` keys: drop all `< current` on every mount, or also on every reset response
 
@@ -162,7 +162,7 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
 
 Plus design-driven verification:
 - `mowerbot.map.epoch.<N>` keys present after first `/map` arrives and after reset
-- `.planning/state/map-epoch.json` exists, shape `{ epoch: int, resetAt: ISO }`, written atomically (no half-files visible during write)
+- `data/map-epoch.json` exists (D-07 corrected path), shape `{ epoch: int, resetAt: ISO }`, written atomically (no half-files visible during write)
 - `web/server.mjs` is unchanged in this phase (regression gate from Phase 6)
 
 </success_criteria>

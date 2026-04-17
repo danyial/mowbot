@@ -1028,32 +1028,19 @@ Planners: follow this exact shape — helper function for file I/O, typed return
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Which slam-reset option does the user want? (A/B/C)**
-   - What we know: /slam_toolbox/reset does not exist in humble 2.6.10. Three viable alternatives catalogued.
-   - What's unclear: user's tolerance for `docker.sock:rw` (Option A) vs extra Wave 0 posegraph generation (Option B) vs milestone scope change (Option C).
-   - Recommendation: **surface to user via `/gsd-discuss-phase` amendment or as first Wave 0 task surfaced in plan-check.** Do not silently pick.
+All Open Questions have been resolved in CONTEXT / planning / fixes below.
 
-2. **Where does `.planning/state/map-epoch.json` actually live at runtime?**
-   - What we know: inside the web container, `.planning/` is not mounted.
-   - What's unclear: whether the user prefers the file in the `mower-data` volume (runtime state) or mounting `.planning/` into the web container.
-   - Recommendation: relocate to `data/map-epoch.json` (matches existing pattern); surface in discuss-phase.
+1. **Which slam-reset option does the user want? (A/B/C)** — **RESOLVED.** CONTEXT.md §D-13a locks **Option B** (serialize_map once on hardware to produce `config/empty.posegraph` + `config/empty.data`; `deserialize_map` on every reset). Docker.sock stays `:ro`, preserving Phase 6's security boundary. Option A (container restart via docker.sock:rw) and Option C (slam_toolbox version upgrade) are both rejected.
 
-3. **Does `LIDAR_DISPLAY_YAW_OFFSET` need to come out of MapBitmap?**
-   - What we know: applying a fixed rotation to a world-fixed map frame is geometrically wrong.
-   - What's unclear: whether the existing code "accidentally works" because of how the scan-canvas's scan rotation and the map-bitmap's rotation both cancel out in the post-reset stationary case.
-   - Recommendation: add a Wave 1 verification task: with mower rotated 90°, confirm grid stays north-up and scan rotates.
+2. **Where does `.planning/state/map-epoch.json` actually live at runtime?** — **RESOLVED.** Relocated to **`data/map-epoch.json`** per D-07 post-research correction. Matches existing `data/{config,zones,missions}.json` pattern; mounted into `mower-web` via the `mower-data` volume; survives container restarts.
 
-4. **What's the MAX yard size the user realistically plans to map with this Phase 8 design?**
-   - What we know: 5 MB quota ≈ 15×15 m at 2.5 cm resolution (after Array.from JSON overhead).
-   - What's unclear: whether the mower's coverage area exceeds that.
-   - Recommendation: surface as a post-ship metric; flag in docs that IndexedDB migration is the pre-planned escape valve.
+3. **Does `LIDAR_DISPLAY_YAW_OFFSET` need to come out of MapBitmap?** — **RESOLVED.** Plan 08-04 Task 1 removes the `ctx.save()/translate/rotate(LIDAR_DISPLAY_YAW_OFFSET)/restore()` wrapping around `drawImage` in `map-bitmap.tsx`. The map is world-fixed in map frame; applying a display-offset rotation to the bitmap was a Phase 4 v0 artifact that only worked while the robot sat at the map origin. Plan 08-04 Task 3 (UAT Test 1) verifies by rotating the mower 90° and confirming the grid stays north-up while only the cursor rotates.
 
-5. **Does `/map` TRANSIENT_LOCAL latch deliver stale-then-fresh, or stale-only until next publish?**
-   - What we know: slam_toolbox publishes `/map` at `map_update_interval: 2.0` = 0.5 Hz.
-   - What's unclear: empirical behavior after Option A container restart.
-   - Recommendation: Wave 0 smoke test — measure time from `docker restart mower-slam` to first `/map` receipt via rosbridge.
+4. **What's the MAX yard size the user realistically plans to map with this Phase 8 design?** — **ACCEPTED OPEN (post-ship metric).** 5 MB localStorage quota ≈ 15×15 m at 2.5 cm resolution after Array.from JSON overhead. Quota-exceeded path is handled (D-12: `persistenceDisabled: true` + inline banner). IndexedDB migration is deferred per REQUIREMENTS.md §Future Requirements — trigger only if measured grid sizes blow past 5 MB. No action required in Phase 8; monitor via DevTools during UAT.
+
+5. **Does `/map` TRANSIENT_LOCAL latch deliver stale-then-fresh, or stale-only until next publish?** — **RESOLVED (via architecture fix, not empirical measurement).** The question is moot given the `minStampMs` stale-latch filter introduced in Plan 02 Task 2 (BLOCKER #2 fix). `waitForNextMap(timeoutMs, minStampMs)` drops any /map message whose `header.stamp` is earlier than `minStampMs` (captured as `Date.now()` immediately before the deserialize service call). Whether slam_toolbox's TL latch republishes the stale map or not, the filter excludes it. Plan 01 Task 4 Test #5 is the regression gate that pins this contract.
 
 ---
 

@@ -84,7 +84,8 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
 
 ### Epoch + persistence format (D-07..D-12)
 
-- **D-07:** **Server-side counter** in `.planning/state/map-epoch.json` of shape `{ "epoch": <int>, "resetAt": "<ISO8601>" }`. Initial value: `{ epoch: 0, resetAt: <createdAt> }` written on first GET if file missing.
+- **D-07:** **Server-side counter** in `data/map-epoch.json` of shape `{ "epoch": <int>, "resetAt": "<ISO8601>" }`. Initial value: `{ epoch: 0, resetAt: <createdAt> }` written on first GET if file missing.
+  - Path **corrected from `.planning/state/...` to `data/...`** post-research: `.planning/` is not mounted into `mower-web`; `data/` is the existing volume used by `data/zones.json`, `data/config.json`, `data/missions.json`. Same lazy-init pattern as `readConfig()` in `web/app/api/config/route.ts`.
 - **D-08:** Atomic write: write to `<path>.tmp` then `fs.rename` — POSIX atomic on ext4. Avoids torn reads.
 - **D-09:** **GET `/api/map/epoch`** returns the JSON verbatim. No-cache headers. Called by client on mount and on every reconnect of the rosbridge socket (cheap).
 - **D-10:** **localStorage key:** `mowerbot.map.epoch.<N>` where `<N>` is the integer epoch. Value: `JSON.stringify(occupancyGrid)` — unaltered roslib message including header, info, and the data Int8Array (which serializes as a regular number array; Int8Array reconstruction happens in MapBitmap).
@@ -95,6 +96,12 @@ No external ADRs exist; PROJECT.md + REQUIREMENTS.md + STATE.md are authoritativ
   4. Drop all `mowerbot.map.*` keys whose suffix `< serverEpoch` (cleanup of old epochs)
   5. Wait for next `/map`; on receipt, replace
 - **D-12:** **Quota:** wrap every `setItem` in `try/catch`. On `QuotaExceededError`: set a `persistenceDisabled` flag in `useMapStore`, show a one-time inline banner under the map "Persistierung deaktiviert (Speicher voll). Karte erscheint nach F5 leer." Operator can clear browser storage manually if they care.
+
+### Reset mechanism (D-13a — added post-research)
+
+- **D-13a:** **slam_toolbox 2.6.10 has no `/reset` service.** Reset is implemented via `serialize_map` once (Wave 0 generates `config/empty.posegraph` + `config/empty.data` from a freshly-restarted slam container) + `deserialize_map` on every reset (slam_toolbox loads the empty state and reverts internal pose graph). Preserves the Phase 6 `docker.sock:ro` security boundary (vs. the alternative Option A which would have required `:rw` + dockerode `container.restart`). Reset is fast (single ROS service call, no container restart wait).
+  - Reject Option A (docker container restart): would regress Phase 6's `:ro` security boundary
+  - Reject Option C (slam_toolbox version upgrade): out of milestone scope
 
 ### Reset endpoint contract + failure UX (D-13..D-18)
 
